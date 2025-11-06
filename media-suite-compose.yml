@@ -1,0 +1,374 @@
+services:
+  reverse-proxy:
+    container_name: reverse-proxy
+    image: traefik:latest
+    command:
+      - "--global.sendAnonymousUsage=false"
+      - "--log"
+      - "--log.level=INFO"
+      - "--log.format=json"
+      - "--api.insecure=true"
+      - "--api.basepath=/admin"
+      - "--providers.docker.endpoint=unix:///var/run/docker.sock"
+      - "--providers.docker.watch=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.file.directory=/config"
+      - "--providers.file.watch=true"
+      - "--serversTransport.insecureSkipVerify=true" # Allow self-signed certificates for target hosts - https://doc.traefik.io/traefik/routing/overview/#insecureskipverify
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.websecure.http.tls=true"
+      - "--entrypoints.websecure-alt.address=:8443"
+      - "--entrypoints.websecure-alt.http.tls=true"
+      - "--entrypoints.webinternal.address=:82"
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.api.rule=PathPrefix(`/admin`)
+      - traefik.http.routers.api.service=api@internal
+      - traefik.http.routers.api.entrypoints=websecure
+      - traefik.http.routers.api.tls=true
+      # Dashboard Redirect
+      - traefik.http.middlewares.api-redirect.redirectregex.regex=^(.*)/admin$$
+      - traefik.http.middlewares.api-redirect.redirectregex.replacement=$$1/admin/dashboard/
+      - traefik.http.routers.api.middlewares=api-redirect
+
+    ports:
+      # HTTP
+      - target: 80
+        published: 80
+
+      # HTTPS
+      - target: 443
+        published: 443
+      
+      # HTTPS (ALT)
+      - target: 8443
+        published: 8443
+        
+      # Web UI (enabled by --api.insecure=true)
+      - target: 8080
+        published: 8080
+    networks:
+      - traefik
+      - traefik_internal
+    volumes:
+      # So that Traefik can listen to the Docker events
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /mnt/docker/traefik/acme:/etc/traefik/acme
+      - /mnt/docker/traefik/certificates:/etc/traefik/certificates
+      - /mnt/docker/traefik/config:/config
+
+  # Radarr - https://hotio.dev/containers/radarr/
+  # mkdir /mnt/docker/appdata/radarr
+  radarr:
+    container_name: radarr
+    image: ghcr.io/hotio/radarr:latest
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-file: ${DOCKERLOGGING_MAXFILE}
+        max-size: ${DOCKERLOGGING_MAXSIZE}
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=traefik
+      - traefik.http.routers.radarr.rule=PathPrefix(`/movies`)
+      - traefik.http.routers.radarr.entrypoints=websecure
+      - traefik.http.routers.radarr.tls=true
+      - traefik.http.services.radarr.loadbalancer.server.port=7878
+
+      - org.hotio.pullio.update=${PULLIO_UPDATE}
+      - org.hotio.pullio.notify=${PULLIO_NOTIFY}
+      - org.hotio.pullio.discord.webhook=${PULLIO_DISCORD_WEBHOOK}
+    networks:
+      - traefik
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - UMASK=002
+      - RADARR__SERVER__URLBASE=/movies
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ${DOCKERCONFDIR}/radarr:/config
+      - ${DOCKERSTORAGEDIR}:/data
+
+  # Sonarr - https://hotio.dev/containers/sonarr/
+  # mkdir /mnt/docker/appdata/sonarr
+  sonarr:
+    container_name: sonarr
+    image: ghcr.io/hotio/sonarr:latest
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-file: ${DOCKERLOGGING_MAXFILE}
+        max-size: ${DOCKERLOGGING_MAXSIZE}
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=traefik
+      - traefik.http.routers.sonarr.rule=PathPrefix(`/tv`)
+      - traefik.http.routers.sonarr.entrypoints=websecure
+      - traefik.http.routers.sonarr.tls=true
+      - traefik.http.services.sonarr.loadbalancer.server.port=8989
+
+      - org.hotio.pullio.update=${PULLIO_UPDATE}
+      - org.hotio.pullio.notify=${PULLIO_NOTIFY}
+      - org.hotio.pullio.discord.webhook=${PULLIO_DISCORD_WEBHOOK}
+    networks:
+      - traefik
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - UMASK=002
+      - SONARR__SERVER__URLBASE=/tv
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ${DOCKERCONFDIR}/sonarr:/config
+      - ${DOCKERSTORAGEDIR}:/data
+
+  # Lidarr - https://hotio.dev/containers/lidarr/
+  # mkdir /mnt/docker/appdata/lidarr
+  lidarr:
+    container_name: lidarr
+    image: ghcr.io/hotio/lidarr:latest
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-file: ${DOCKERLOGGING_MAXFILE}
+        max-size: ${DOCKERLOGGING_MAXSIZE}
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=traefik
+      - traefik.http.routers.lidarr.rule=PathPrefix(`/music`)
+      - traefik.http.routers.lidarr.entrypoints=websecure
+      - traefik.http.routers.lidarr.tls=true
+      - traefik.http.services.lidarr.loadbalancer.server.port=8686
+      
+      - org.hotio.pullio.update=${PULLIO_UPDATE}
+      - org.hotio.pullio.notify=${PULLIO_NOTIFY}
+      - org.hotio.pullio.discord.webhook=${PULLIO_DISCORD_WEBHOOK}
+    networks:
+      - traefik
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - UMASK=002
+      - LIDARR__SERVER__URLBASE=/music
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ${DOCKERCONFDIR}/lidarr:/config
+      - ${DOCKERSTORAGEDIR}:/data
+
+  # Readarr - https://hotio.dev/containers/readarr/
+  # mkdir /mnt/docker/appdata/readarr
+  readarr:
+    container_name: readarr
+    image: ghcr.io/pennydreadful/bookshelf:hardcover
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-file: ${DOCKERLOGGING_MAXFILE}
+        max-size: ${DOCKERLOGGING_MAXSIZE}
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=traefik
+      - traefik.http.routers.readarr.rule=PathPrefix(`/books`)
+      - traefik.http.routers.readarr.entrypoints=websecure
+      - traefik.http.routers.readarr.tls=true
+      - traefik.http.services.readarr.loadbalancer.server.port=8787
+
+      - org.hotio.pullio.update=${PULLIO_UPDATE}
+      - org.hotio.pullio.notify=${PULLIO_NOTIFY}
+      - org.hotio.pullio.discord.webhook=${PULLIO_DISCORD_WEBHOOK}
+    networks:
+      - traefik
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - UMASK=002
+      - READARR__SERVER__URLBASE=/books
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ${DOCKERCONFDIR}/readarr:/config
+      - ${DOCKERSTORAGEDIR}:/data
+
+  # Homarr - https://homarr.dev/docs/category/getting-started
+  homarr:
+    container_name: homarr
+    image: ghcr.io/homarr-labs/homarr:latest
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-file: ${DOCKERLOGGING_MAXFILE}
+        max-size: ${DOCKERLOGGING_MAXSIZE}
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=traefik
+      - traefik.http.routers.homarr.rule=HostRegexp(`.*`)
+      - traefik.http.routers.homarr.priority=10
+      - traefik.http.routers.homarr.entrypoints=websecure
+      - traefik.http.routers.homarr.tls=true
+      - traefik.http.services.homarr.loadbalancer.server.port=7575
+
+      - org.hotio.pullio.update=${PULLIO_UPDATE}
+      - org.hotio.pullio.notify=${PULLIO_NOTIFY}
+      - org.hotio.pullio.discord.webhook=${PULLIO_DISCORD_WEBHOOK}
+    networks:
+      - traefik
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - UMASK=002
+      - SECRET_ENCRYPTION_KEY=${SECRET_ENCRYPTION_KEY}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro # Optional, only if you want docker integration
+      - /etc/localtime:/etc/localtime:ro
+      - ${DOCKERCONFDIR}/homarr:/appdata
+
+  # Prowlarr - https://hotio.dev/containers/prowlarr/
+  #
+  # Don't forget to create the directory, change chown command if needed (the user:group part)
+  # sudo -u docker mkdir -m=00775 /mnt/docker/appdata/prowlarr
+  #
+  prowlarr:
+    container_name: prowlarr
+    image: ghcr.io/hotio/prowlarr:latest
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-file: ${DOCKERLOGGING_MAXFILE}
+        max-size: ${DOCKERLOGGING_MAXSIZE}
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=traefik
+      - traefik.http.routers.prowlarr.rule=PathPrefix(`/idx`)
+      - traefik.http.routers.prowlarr.entrypoints=websecure
+      - traefik.http.routers.prowlarr.tls=true
+      - traefik.http.services.prowlarr.loadbalancer.server.port=9696
+      
+      - org.hotio.pullio.update=${PULLIO_UPDATE}
+      - org.hotio.pullio.notify=${PULLIO_NOTIFY}
+      - org.hotio.pullio.discord.webhook=${PULLIO_DISCORD_WEBHOOK}
+    networks:
+      - traefik
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - UMASK=002
+      - PROWLARR__SERVER__URLBASE=/idx
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ${DOCKERCONFDIR}/prowlarr:/config
+
+  # Qbittorrent - https://hotio.dev/containers/qbittorrent/
+  # mkdir /mnt/docker/appdata/qbittorrent
+  qbittorrent:
+    container_name: qbittorrent
+    image: ghcr.io/hotio/qbittorrent:latest
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-file: ${DOCKERLOGGING_MAXFILE}
+        max-size: ${DOCKERLOGGING_MAXSIZE}
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=traefik
+
+      - traefik.http.routers.qb.rule=PathPrefix(`/download`)
+      - traefik.http.routers.qb.entrypoints=websecure
+      - traefik.http.routers.qb.tls=true
+
+      # adding a slash to the end
+      - traefik.http.middlewares.qb-redirect.redirectregex.regex=^(.*)/download$$
+      - traefik.http.middlewares.qb-redirect.redirectregex.replacement=$$1/download/
+      - traefik.http.middlewares.qb-strip.stripprefix.prefixes=/download/
+      
+      # header changes
+      - traefik.http.middlewares.qb-headers.headers.customrequestheaders.X-Frame-Options=SAMEORIGIN
+      - traefik.http.middlewares.qb-headers.headers.customrequestheaders.Referer=
+      - traefik.http.middlewares.qb-headers.headers.customrequestheaders.Origin=
+      - traefik.http.routers.qb.middlewares=qb-strip,qb-redirect,qb-headers
+      
+      # loadbalancer to *not* pass the host header        
+      - traefik.http.services.qb.loadbalancer.server.port=8080
+      - traefik.http.services.qb.loadbalancer.passhostheader=false
+
+      - org.hotio.pullio.update=${PULLIO_UPDATE}
+      - org.hotio.pullio.notify=${PULLIO_NOTIFY}
+      - org.hotio.pullio.discord.webhook=${PULLIO_DISCORD_WEBHOOK}
+    networks:
+      - traefik
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - UMASK=002
+      - TZ=${TZ}
+      - WEBUI_PORTS=8080/tcp,8080/udp
+      - LIBTORRENT=v1
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ${DOCKERCONFDIR}/qbittorrent:/config
+      - ${DOCKERSTORAGEDIR}:/data
+
+  # Plex Media Server - https://hotio.dev/containers/plex/
+  # mkdir /mnt/docker/appdata/plex
+  plex:
+    container_name: plex
+    image: ghcr.io/hotio/plex:latest
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-file: ${DOCKERLOGGING_MAXFILE}
+        max-size: ${DOCKERLOGGING_MAXSIZE}
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=traefik
+      - traefik.http.routers.plex.rule=HostRegexp(`.*`)
+      - traefik.http.routers.plex.priority=10
+      - traefik.http.routers.plex.entrypoints=websecure-alt
+      - traefik.http.routers.plex.tls=true      
+      - traefik.http.services.plex.loadbalancer.server.port=32400
+      
+      - org.hotio.pullio.update=${PULLIO_UPDATE}
+      - org.hotio.pullio.notify=${PULLIO_NOTIFY}
+      - org.hotio.pullio.discord.webhook=${PULLIO_DISCORD_WEBHOOK}
+    networks:
+      - traefik
+    ports:
+      - "32400:32400"
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - UMASK=002
+      - TZ=${TZ}
+      - PLEX_CLAIM_TOKEN=${PLEX_CLAIM_TOKEN}
+      - PLEX_ADVERTISE_URL=${PLEX_ADVERTISE_URL}
+      - PLEX_NO_AUTH_NETWORKS=${PLEX_NO_AUTH_NETWORKS}
+      - PLEX_BETA_INSTALL=false
+      - PLEX_PURGE_CODECS=false
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ${DOCKERCONFDIR}/plex/config:/config
+      - ${DOCKERCONFDIR}/plex/transcode:/transcode
+      - ${DOCKERSTORAGEDIR}:/data
+
+networks:
+  traefik:
+    name: traefik
+  traefik_internal:
+    name: traefik_internal
+ 

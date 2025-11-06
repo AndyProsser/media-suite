@@ -1,0 +1,35 @@
+services:
+  portainer:
+    container_name: portainer
+    image: portainer/portainer-ce:latest
+    restart: always
+    labels:
+      - org.hotio.pullio.update=true
+      - org.hotio.pullio.notify=false
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - portainer_data:/data
+    ports:
+      - 9443:9443
+
+  portainer_agent:
+    container_name: portainer_agent
+    image: portainer/agent:latest
+    restart: always
+    labels:
+      - org.hotio.pullio.update=true
+      - org.hotio.pullio.notify=false
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/volumes:/var/lib/docker/volumes
+      - /:/host
+    ports:
+      - 9001:9001
+
+volumes:
+  portainer_data:
+    name: portainer_data
+
+networks:
+  default:
+    name: portainer_network
