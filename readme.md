@@ -65,20 +65,40 @@ Save file (CTRL+X)
 docker compose -f portainer-compose.yml -p portainer up -d
 ```
 
+### Create 'portainer' reverse proxy rules
+
+```
+IP_ADDRESS=$(ip -4 addr show $(ip route | grep default | awk '{print $5}') | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
+echo -e "http:\n\
+  routers:\n\
+    docker:\n\
+      rule: \"PathPrefix(\`/docker\`)\"\n\
+      service: docker-service\n\
+      entryPoints:\n\
+        - websecure\n\
+      middlewares:\n\
+        - docker-redirect\n\
+        - docker-strip-prefix\n\
+  middlewares:\n\
+    docker-strip-prefix:\n\
+      stripPrefix:\n\
+        prefixes:\n\
+          - \"/docker\"\n\
+    docker-redirect:\n\
+      redirectRegex:\n\
+        regex: \"^(.*)/docker\$\$\"\n\
+        replacement: /docker/\n\
+  services:\n\
+    docker-service:\n\
+      loadBalancer:\n\
+       servers:\n\
+         - url: \"https://${IP_ADDRESS}:9443\"\n" | tee /mnt/docker/traefik/config/portainer-route.yml > /dev/null
+```
+
 ### Setup Portainer Password
 
 Access Portainer WebUI and create password:
 https://<serverip>:9443/
-
-## Install Pullio to Automate Image Updates
-
-[https://hotio.dev/scripts/pullio/]
-
-```
-sudo curl -fsSL "https://raw.githubusercontent.com/hotio/pullio/master/pullio.sh" -o /usr/local/bin/pullio
-sudo chmod +x /usr/local/bin/pullio
-(crontab -l ; echo "0 * * * * /usr/local/bin/pullio > /mnt/docker/logs/pullio.log 2>&1") | sort - | uniq - | crontab - > /dev/null
-```
 
 ## Build Media Suite
 
@@ -126,36 +146,6 @@ echo -e "tls:\n\
       keyFile: /etc/traefik/certificates/cert.key\n\
       stores:\n\
         - default\n" | tee  /mnt/docker/traefik/config/certificates.yml > /dev/null
-```
-
-### Create 'portainer' reverse proxy rules
-
-```
-IP_ADDRESS=$(ip -4 addr show $(ip route | grep default | awk '{print $5}') | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
-echo -e "http:\n\
-  routers:\n\
-    docker:\n\
-      rule: \"PathPrefix(\`/docker\`)\"\n\
-      service: docker-service\n\
-      entryPoints:\n\
-        - websecure\n\
-      middlewares:\n\
-        - docker-redirect\n\
-        - docker-strip-prefix\n\
-  middlewares:\n\
-    docker-strip-prefix:\n\
-      stripPrefix:\n\
-        prefixes:\n\
-          - \"/docker\"\n\
-    docker-redirect:\n\
-      redirectRegex:\n\
-        regex: \"^(.*)/docker\$\$\"\n\
-        replacement: /docker/\n\
-  services:\n\
-    docker-service:\n\
-      loadBalancer:\n\
-       servers:\n\
-         - url: \"https://${IP_ADDRESS}:9443\"\n" | tee /mnt/docker/traefik/config/portainer-route.yml > /dev/null
 ```
 
 ### Edit .env File

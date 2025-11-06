@@ -1,0 +1,24 @@
+http:
+  routers:
+    docker:
+      rule: "PathPrefix(`/docker`)"
+      service: docker-service
+      entryPoints:
+        - websecure
+      middlewares:
+        - docker-redirect
+        - docker-strip-prefix
+  middlewares:
+    docker-strip-prefix:
+      stripPrefix:
+        prefixes:
+          - "/docker"
+    docker-redirect:
+      redirectRegex:
+        regex: "^(.*)/docker$$"
+        replacement: /docker/
+  services:
+    docker-service:
+      loadBalancer:
+       servers:
+         - url: "https://${IP_ADDRESS}:9443"
