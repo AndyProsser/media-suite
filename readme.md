@@ -47,6 +47,9 @@ To allow non-privileged users to run Docker commands, add your user to the docke
 
 ```
 sudo usermod -aG docker $USER
+sudo chown root:docker /var/run/docker.sock
+sudo chmod 660 /var/run/docker.sock
+newgrp docker
 ```
 
 ## Install Portainer for Web GUI
@@ -74,6 +77,7 @@ https://<serverip>:9443/
 ```
 sudo curl -fsSL "https://raw.githubusercontent.com/hotio/pullio/master/pullio.sh" -o /usr/local/bin/pullio
 sudo chmod +x /usr/local/bin/pullio
+(crontab -l ; echo "0 * * * * /usr/local/bin/pullio > /mnt/docker/logs/pullio.log 2>&1") | sort - | uniq - | crontab - > /dev/null
 ```
 
 ## Build Media Suite
@@ -86,6 +90,7 @@ sudo mkdir -p /mnt/docker/appdata/{radarr,sonarr,lidarr,readarr,homarr,prowlarr,
 sudo mkdir -p /mnt/docker/appdata/plex/{config,transcode}
 sudo mkdir -p /mnt/data/torrents/{movies,tv,music,books}
 sudo mkdir -p /mnt/data/media/{movies,tv,music,books}
+sudo mkdir -p /mnt/docker/logs
 sudo chown 1000:990 -R /mnt
 ```
 

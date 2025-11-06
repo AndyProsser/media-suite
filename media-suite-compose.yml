@@ -34,6 +34,10 @@ services:
       - traefik.http.middlewares.api-redirect.redirectregex.replacement=$$1/admin/dashboard/
       - traefik.http.routers.api.middlewares=api-redirect
 
+      - org.hotio.pullio.update=${PULLIO_UPDATE}
+      - org.hotio.pullio.notify=${PULLIO_NOTIFY}
+      - org.hotio.pullio.discord.webhook=${PULLIO_DISCORD_WEBHOOK}
+
     ports:
       # HTTP
       - target: 80
