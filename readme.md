@@ -1,6 +1,19 @@
 # Installing Docker on Linux (Ubuntu)
 
-[https://trash-guides.info/File-and-Folder-Structure/How-to-set-up/Docker/]
+Have you always wanted to build your own *Netflix* service so that **YOU** control
+the content? This used to be complex, but now with OpenSource platforms and
+containerisation, this is actually easier than ever.
+What you need to get started:
+ * An old PC with plenty of disk space
+ * A USB Key with [Ubuntu Server](https://ubuntu.com/download/server)
+ * A [Plex](https://plex.tv) (Paid or Free)
+ * A few hours spare time
+
+That's it. Once this is all setup, you can enjoy access to a world of content.
+Oh, this guide only convers setting up the platforms. You'll have to work out
+how to make it all work.
+
+If you need access to this system outside your home, conside setting up a VPN.
 
 ## Helpfull Sites
 
@@ -52,7 +65,7 @@ newgrp docker
 sudo docker run  -p 8888:80 -d traefik/whoami
 ```
 Test system is working by visiting:
-[http://<serverip>:8888]
+[http://⟪serverip⟫:8888]
 
 ## Install Portainer for Web GUI
 
@@ -70,7 +83,7 @@ docker compose -f portainer-compose.yml -p portainer up -d
 ### Setup Portainer Password
 
 Access Portainer WebUI and create password:
-[https://<serverip>:9443/]
+[https://⟪serverip⟫:9443/]
 
 ## Build Media Suite
 
@@ -168,7 +181,7 @@ Make sure you update your PLEX Claim Code (be quick as this code only lasts 4 mi
 
 ### Upload Composer File to Portainer
 
-1. Access Portainer WebUI [https://<serverip>:9443/]
+1. Access Portainer WebUI [https://⟪serverip⟫:9443/]
 2. Navigate to "Stacks"
 3. Click "Add Stack"
 4. Upload "media-suite-compose.yml"
@@ -184,28 +197,33 @@ For the *arr apps, you'll be asked to setup authentication. This is optional, bu
 All services are managed by Traefik to simplify routing and access.
 
 * Dashboard (Homarr)
-[https://<serverip>/]
+[https://⟪serverip⟫/]
 
 * Traefik Proxy (Traefik)
-[https://<serverip>/dashboard]
+[https://⟪serverip⟫/dashboard]
 
 * Docker Admin (Portainer)
-[https://<serverip>/docker]
-[https://<serverip>:9443] (Backup)
+[https://⟪serverip⟫/docker]
+[https://⟪serverip⟫:9443] (Backup)
 
 * Media Apps
-Radarr [https://<serverip>/movies]
-Sonarr [https://<serverip>/tv]
-Lidarr [https://<serverip>/music]
-Readarr [https://<serverip>/books]
-Prowlarr [https://<serverip>/idx]
-BitTorrent [https://<serverip>/download]
+Radarr [https://⟪serverip⟫/movies]
+Sonarr [https://⟪serverip⟫/tv]
+Lidarr [https://⟪serverip⟫/music]
+Readarr [https://⟪serverip⟫/books]
+Prowlarr [https://⟪serverip⟫/idx]
+BitTorrent [https://⟪serverip⟫/download]
 
 * Plex Server
-[https://<serverip>:8443] (Web UI)
-[http://<serverip>:32400] (NAT Port Forward)
+[https://⟪serverip⟫:8443] (Web UI)
+[http://⟪serverip⟫:32400] (NAT Port Forward)
+
+Make sure you enable NAT Port Forwarding on your Router to enjoy access to your content 
+whilst outside your home.
+0.0.0.0:32400/TCP =⟫ ⟪serverip⟫:32400
 
 # Configure Apps
 
-Configuring all these servers will take time, **TRaSH Guides** [https://trash-guides.info/] is the best place to start.
+Configuring all these servers will take time, [**TRaSH Guides**](https://trash-guides.info/) is the best place to start.
 
+Goodluck!
