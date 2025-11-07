@@ -16,7 +16,7 @@ how to make it all work.
 If you need access to this system outside your home, consider setting up a VPN.
 
 > [!IMPORTANT]
-> **DISCLAIMER:** This project was inspired by others and is designed as a *Proof-of-Concept*.
+> This project was inspired by others and is designed as a *Proof-of-Concept*.
 > What you do with it is up to you. Good luck and happy tinkering.
 
 ## Media Server Dashboard
@@ -219,7 +219,7 @@ You can monitor the stack from Portainer and view the console logs for each cont
 ### Create Monitoring Systems via Portainer (Optional)
 
 > [!WARNING]
-> WIP: Not Complete
+> WIP: The montioring stack is a *WIP* and not yet complete
 
 1. Access Portainer WebUI [https://⟪serverip⟫:9443/]
 2. Navigate to "Stacks"
@@ -231,7 +231,6 @@ You can monitor the stack from Portainer and view the console logs for each cont
 8. Wait ~5 mins for all containers to be pulled and the services to start
 
 You can monitor the stack from Portainer and view the console logs for each containter.
-For the *arr apps, you'll be asked to setup authentication. This is optional, but recommended.
 
 # Access Services
 
