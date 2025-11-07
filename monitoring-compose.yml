@@ -1,0 +1,55 @@
+# Source: https://medium.com/@ugenef/application-monitoring-with-traefik-prometheus-grafana-and-docker-compose-for-beginners-2fe25d1b60a8
+### WIP: Not Complete ###
+
+services:
+  prometheus:
+    image: prom/prometheus
+    volumes:
+      - /mnt/docker/prometheus:/etc/prometheus
+      - prometheus:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.size=256MB'
+    labels:
+      - "traefik.http.routers.prometheus.rule=Host(`${PROM_URL}`)"
+      - "traefik.http.routers.prometheus.service=prometheus"
+      - "traefik.http.routers.prometheus.middlewares=traefik-auth"
+      - "traefik.http.services.prometheus.loadbalancer.server.port=9090"
+    networks:
+      - traefik
+    restart: unless-stopped
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "3"
+  
+  grafana:
+    image: grafana/grafana
+    depends_on:
+      - prometheus
+    volumes:
+      - /mnt/docker/grafana/data:/var/lib/grafana
+      - /mnt/docker/grafana/provisioning:/etc/grafana/provisioning
+    environment:
+      GF_SECURITY_DISABLE_INITIAL_ADMIN_CREATION: "true"
+      GF_INSTALL_PLUGINS: grafana-piechart-panel
+    labels:
+      - "traefik.http.routers.grafana.rule=Host(`${GRAFANA_URL}`)"
+      - "traefik.http.routers.grafana.service=grafana"
+      - "traefik.http.routers.grafana.middlewares=traefik-auth"
+      - "traefik.http.services.grafana.loadbalancer.server.port=3000"
+    networks:
+      - traefik
+    restart: unless-stopped
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  traefik:
+    external: true
+
+volumes:
+  prometheus:

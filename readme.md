@@ -15,8 +15,8 @@ how to make it all work.
 
 If you need access to this system outside your home, consider setting up a VPN.
 
-**DISCLAIMER:** This project was inspired by others and is designed as a *Proof-of-Concept*.
-What you do with it is up to you. Good luck and happy tinkering.
+[!IMPORTANT]
+**DISCLAIMER:** This project was inspired by others and is designed as a *Proof-of-Concept*. What you do with it is up to you. Good luck and happy tinkering.
 
 ## Media Server Dashboard
 
@@ -71,11 +71,18 @@ newgrp docker
 
 ## Verify the installation:
 
+[!NOTE]
+This is only a temporary container. You should remove it later.
+
 ```
-sudo docker run  -p 8888:80 -d traefik/whoami
+sudo docker run --name whoami -p 8888:80 -d traefik/whoami
 ```
 Test system is working by visiting:
 [http://⟪serverip⟫:8888]
+
+```
+sudo docker rm whoami --force
+```
 
 ## Install Portainer for Web GUI
 
@@ -109,7 +116,7 @@ echo -e "\nPUID=${PUID}\nPGID=${PGID}"
 ### Create Folders
 
 ```
-sudo mkdir -p /mnt/docker/traefik/{acme,certificates,config}
+sudo mkdir -p /mnt/docker/traefik/{acme,certificates,config,logs}
 sudo mkdir -p /mnt/docker/appdata/{radarr,sonarr,lidarr,readarr,homarr,prowlarr,qbittorrent,plex}
 sudo mkdir -p /mnt/docker/appdata/plex/{config,transcode}
 sudo mkdir -p /mnt/data/torrents/{movies,tv,music,books}
@@ -183,28 +190,53 @@ echo -e "http:\n\
         - url: \"https://${IP_ADDRESS}:9443\"\n" | tee /mnt/docker/traefik/config/portainer-route.yml > /dev/null
 ```
 
+### Create Traefik Network (needed to build new stacks that leverage Traefik)
+
+```
+docker network create traefik
+```
+
 ### Edit .env File
 
 Edit the .env file to match you needs.
 Make sure you update your PLEX Claim Code (be quick as this code only lasts 4 minutes)
 [https://plex.tv/claim]
 
-### Upload Composer File to Portainer
+### Create Media Suite Suite via Portainer
 
 1. Access Portainer WebUI [https://⟪serverip⟫:9443/]
 2. Navigate to "Stacks"
 3. Click "Add Stack"
 4. Upload "media-suite-compose.yml"
-5. Upload ".env" file (make any last minute changes, like your Plex Claim Code) 
-6. Click "Deploy the stack"
-7. Wait ~5 mins for all containers to be pulled and the services to start
+5. Upload "media-suite.env" file
+6. Make any last minute changes, like your Plex Claim Code
+7. Click "Deploy the stack"
+8. Wait ~5 mins for all containers to be pulled and the services to start
 
-You can monotor the stack from Portainer and view the console logs from each containter.
+You can monitor the stack from Portainer and view the console logs for each containter.
+
+### Create Monitoring Systems via Portainer (Optional)
+
+[!WARNING]
+WIP: Not Complete
+
+1. Access Portainer WebUI [https://⟪serverip⟫:9443/]
+2. Navigate to "Stacks"
+3. Click "Add Stack"
+4. Upload "monitoring-compose.yml"
+5. Upload "monitoring.env" file
+6. make any last minute changes
+7. Click "Deploy the stack"
+8. Wait ~5 mins for all containers to be pulled and the services to start
+
+You can monitor the stack from Portainer and view the console logs for each containter.
 For the *arr apps, you'll be asked to setup authentication. This is optional, but recommended.
 
 # Access Services
 
 All services are managed by Traefik to simplify routing and access.
+For the *arr apps, you'll be asked to setup authentication. This is optional, but recommended.
+You can find the default qBitTorrent passwords in the respective container logs.
 
 * Dashboard (Homarr)
   * [App Dashboard] (https://⟪serverip⟫/)
@@ -234,6 +266,6 @@ whilst outside your home.
 
 # Configure Apps
 
-Configuring all these servers will take time, (**TRaSH Guides**](https://trash-guides.info/) is the best place to start.
+Configuring all these servers will take time, [**TRaSH Guides**](https://trash-guides.info/) is the best place to start.
 
 Goodluck!
