@@ -18,6 +18,13 @@ If you need access to this system outside your home, consider setting up a VPN.
 **DISCLAIMER:** This project was inspired by others and is designed as a *Proof-of-Concept*.
 What you do with it is up to you. Good luck and happy tinkering.
 
+## Media Server Dashboard
+
+Media Suite UI Dashboards
+![Homarr Dashboardl](/assets/Dashboard-Screenshot.png "Homarr Dashboard")
+
+![Traefik Dashboardl](/assets/Traefik-Screenshot.png "Traefik Dashboard")
+
 ## Helpfull Sites
 
 **Servarr Wiki**
