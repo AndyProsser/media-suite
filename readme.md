@@ -197,26 +197,26 @@ For the *arr apps, you'll be asked to setup authentication. This is optional, bu
 All services are managed by Traefik to simplify routing and access.
 
 * Dashboard (Homarr)
-  * [App Dashboard](https://⟪serverip⟫/)
+  * [App Dashboard] (https://⟪serverip⟫/)
 
 * Traefik Proxy (Traefik)
-  * [Proxy Dashboard](https://⟪serverip⟫/dashboard)
+  * [Proxy Dashboard] (https://⟪serverip⟫/dashboard)
 
 * Docker Admin (Portainer)
-  * [Portainer](https://⟪serverip⟫/docker)
-  * [Portainer - Direct Access](https://⟪serverip⟫:9443)
+  * [Portainer] (https://⟪serverip⟫/docker)
+  * [Portainer - Direct Access] (https://⟪serverip⟫:9443)
 
 * Media Apps
-  * [Radarr](https://⟪serverip⟫/movies)
-  * [Sonarr](https://⟪serverip⟫/tv)
-  * [Lidarr](https://⟪serverip⟫/music)
-  * [Readarr](https://⟪serverip⟫/books)
-  * [Prowlarr](https://⟪serverip⟫/idx)
-  * [BitTorrent](https://⟪serverip⟫/download)
+  * [Radarr] (https://⟪serverip⟫/movies)
+  * [Sonarr] (https://⟪serverip⟫/tv)
+  * [Lidarr] (https://⟪serverip⟫/music)
+  * [Readarr] (https://⟪serverip⟫/books)
+  * [Prowlarr] (https://⟪serverip⟫/idx)
+  * [BitTorrent] (https://⟪serverip⟫/download)
 
 * Plex Server
-  * [Plex Web UI](https://⟪serverip⟫:8443)
-  * [Plex Media Apps Access](http://⟪serverip⟫:32400)
+  * [Plex Web UI] (https://⟪serverip⟫:8443)
+  * [Plex Media Apps Access] (http://⟪serverip⟫:32400)
 
 Make sure you enable NAT Port Forwarding on your Router to enjoy access to your content 
 whilst outside your home.
