@@ -15,8 +15,9 @@ how to make it all work.
 
 If you need access to this system outside your home, consider setting up a VPN.
 
-[!IMPORTANT]
-**DISCLAIMER:** This project was inspired by others and is designed as a *Proof-of-Concept*. What you do with it is up to you. Good luck and happy tinkering.
+> [!IMPORTANT]
+> **DISCLAIMER:** This project was inspired by others and is designed as a *Proof-of-Concept*.
+> What you do with it is up to you. Good luck and happy tinkering.
 
 ## Media Server Dashboard
 
@@ -71,8 +72,8 @@ newgrp docker
 
 ## Verify the installation:
 
-[!NOTE]
-This is only a temporary container. You should remove it later.
+> [!NOTE]
+> This is only a temporary container. You should remove it later.
 
 ```
 sudo docker run --name whoami -p 8888:80 -d traefik/whoami
@@ -217,8 +218,8 @@ You can monitor the stack from Portainer and view the console logs for each cont
 
 ### Create Monitoring Systems via Portainer (Optional)
 
-[!WARNING]
-WIP: Not Complete
+> [!WARNING]
+> WIP: Not Complete
 
 1. Access Portainer WebUI [https://⟪serverip⟫:9443/]
 2. Navigate to "Stacks"
