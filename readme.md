@@ -13,7 +13,10 @@ That's it. Once this is all setup, you can enjoy access to a world of content.
 Oh, this guide only convers setting up the platforms. You'll have to work out
 how to make it all work.
 
-If you need access to this system outside your home, conside setting up a VPN.
+If you need access to this system outside your home, consider setting up a VPN.
+
+**DISCLAIMER:** This project was inspired by others and is designed as a *Proof-of-Concept*.
+What you do with it is up to you. Good luck and happy tinkering.
 
 ## Helpfull Sites
 
