@@ -51,6 +51,11 @@ services:
       # Web UI (enabled by --api.insecure=true)
       - target: 8080
         published: 8080
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - UMASK=002    
     networks:
       - traefik
       - traefik_internal

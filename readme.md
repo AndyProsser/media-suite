@@ -35,12 +35,6 @@ sudo apt-get update
 sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 ```
 
-## Verify the installation:
-
-```
-sudo docker run hello-world
-```
-
 ## Post-Installation Steps
 
 To allow non-privileged users to run Docker commands, add your user to the docker group:
@@ -51,6 +45,14 @@ sudo chown root:docker /var/run/docker.sock
 sudo chmod 660 /var/run/docker.sock
 newgrp docker
 ```
+
+## Verify the installation:
+
+```
+sudo docker run  -p 8888:80 -d traefik/whoami
+```
+Test system is working by visiting:
+[http://<serverip>:8888]
 
 ## Install Portainer for Web GUI
 
@@ -65,42 +67,21 @@ Save file (CTRL+X)
 docker compose -f portainer-compose.yml -p portainer up -d
 ```
 
-### Create 'portainer' reverse proxy rules
-
-```
-IP_ADDRESS=$(ip -4 addr show $(ip route | grep default | awk '{print $5}') | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
-echo -e "http:\n\
-  routers:\n\
-    docker:\n\
-      rule: \"PathPrefix(\`/docker\`)\"\n\
-      service: docker-service\n\
-      entryPoints:\n\
-        - websecure\n\
-      middlewares:\n\
-        - docker-redirect\n\
-        - docker-strip-prefix\n\
-  middlewares:\n\
-    docker-strip-prefix:\n\
-      stripPrefix:\n\
-        prefixes:\n\
-          - \"/docker\"\n\
-    docker-redirect:\n\
-      redirectRegex:\n\
-        regex: \"^(.*)/docker\$\$\"\n\
-        replacement: /docker/\n\
-  services:\n\
-    docker-service:\n\
-      loadBalancer:\n\
-       servers:\n\
-         - url: \"https://${IP_ADDRESS}:9443\"\n" | tee /mnt/docker/traefik/config/portainer-route.yml > /dev/null
-```
-
 ### Setup Portainer Password
 
 Access Portainer WebUI and create password:
-https://<serverip>:9443/
+[https://<serverip>:9443/]
 
 ## Build Media Suite
+
+### Get User & Group IDs
+
+You need these ID's for the .env file configuration
+```
+PUID=${UID}
+PGID=$(getent group docker | cut -d: -f3)
+echo -e "\nPUID=${PUID}\nPGID=${PGID}"
+```
 
 ### Create Folders
 
@@ -111,7 +92,8 @@ sudo mkdir -p /mnt/docker/appdata/plex/{config,transcode}
 sudo mkdir -p /mnt/data/torrents/{movies,tv,music,books}
 sudo mkdir -p /mnt/data/media/{movies,tv,music,books}
 sudo mkdir -p /mnt/docker/logs
-sudo chown 1000:990 -R /mnt
+sudo chown ${PUID}:${PGID} -R /mnt/docker
+sudo chown ${PUID}:${PGID} -R /mnt/data
 ```
 
 ### Create Certificates
@@ -148,6 +130,36 @@ echo -e "tls:\n\
         - default\n" | tee  /mnt/docker/traefik/config/certificates.yml > /dev/null
 ```
 
+### Create 'portainer' reverse proxy rules
+
+```
+IP_ADDRESS=$(ip -4 addr show $(ip route | grep default | awk '{print $5}') | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
+echo -e "http:\n\
+  routers:\n\
+    docker:\n\
+      rule: \"PathPrefix(\`/docker\`)\"\n\
+      service: docker-service\n\
+      entryPoints:\n\
+        - websecure\n\
+      middlewares:\n\
+        - docker-redirect\n\
+        - docker-strip-prefix\n\
+  middlewares:\n\
+    docker-strip-prefix:\n\
+      stripPrefix:\n\
+        prefixes:\n\
+          - \"/docker\"\n\
+    docker-redirect:\n\
+      redirectRegex:\n\
+        regex: \"^(.*)/docker\$\$\"\n\
+        replacement: /docker/\n\
+  services:\n\
+    docker-service:\n\
+      loadBalancer:\n\
+       servers:\n\
+         - url: \"https://${IP_ADDRESS}:9443\"\n" | tee /mnt/docker/traefik/config/portainer-route.yml > /dev/null
+```
+
 ### Edit .env File
 
 Edit the .env file to match you needs.
@@ -165,7 +177,7 @@ Make sure you update your PLEX Claim Code (be quick as this code only lasts 4 mi
 7. Wait ~5 mins for all containers to be pulled and the services to start
 
 You can monotor the stack from Portainer and view the console logs from each containter.
-Fpr the *arr apps, you'll be asked to setup authentication. This is optional, but recommended.
+For the *arr apps, you'll be asked to setup authentication. This is optional, but recommended.
 
 # Access Services
 

@@ -3,8 +3,6 @@ services:
     container_name: portainer
     image: portainer/portainer-ce:latest
     restart: always
-    networks:
-      - portainer
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - portainer_data:/data
@@ -14,7 +12,3 @@ services:
 volumes:
   portainer_data:
     name: portainer_data
-
-networks:
-  portainer:
-    name: portainer_agent
