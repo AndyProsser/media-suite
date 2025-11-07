@@ -1,7 +1,8 @@
 services:
-  reverse-proxy:
-    container_name: reverse-proxy
+  proxy:
+    container_name: proxy
     image: traefik:latest
+    restart: always
     command:
       - "--global.sendAnonymousUsage=false"
       - "--log"
@@ -66,6 +67,8 @@ services:
     container_name: radarr
     image: ghcr.io/hotio/radarr:latest
     restart: unless-stopped
+    depends_on:
+      - proxy
     logging:
       driver: json-file
       options:
@@ -97,6 +100,8 @@ services:
     container_name: sonarr
     image: ghcr.io/hotio/sonarr:latest
     restart: unless-stopped
+    depends_on:
+      - proxy
     logging:
       driver: json-file
       options:
@@ -128,6 +133,8 @@ services:
     container_name: lidarr
     image: ghcr.io/hotio/lidarr:latest
     restart: unless-stopped
+    depends_on:
+      - proxy
     logging:
       driver: json-file
       options:
@@ -159,6 +166,8 @@ services:
     container_name: readarr
     image: ghcr.io/pennydreadful/bookshelf:hardcover
     restart: unless-stopped
+    depends_on:
+      - proxy
     logging:
       driver: json-file
       options:
@@ -189,6 +198,8 @@ services:
     container_name: homarr
     image: ghcr.io/homarr-labs/homarr:latest
     restart: unless-stopped
+    depends_on:
+      - proxy
     logging:
       driver: json-file
       options:
@@ -224,6 +235,8 @@ services:
     container_name: prowlarr
     image: ghcr.io/hotio/prowlarr:latest
     restart: unless-stopped
+    depends_on:
+      - proxy
     logging:
       driver: json-file
       options:
@@ -254,6 +267,8 @@ services:
     container_name: qbittorrent
     image: ghcr.io/hotio/qbittorrent:latest
     restart: unless-stopped
+    depends_on:
+      - proxy
     logging:
       driver: json-file
       options:
