@@ -169,8 +169,8 @@ echo -e "http:\n\
   services:\n\
     docker-service:\n\
       loadBalancer:\n\
-       servers:\n\
-         - url: \"https://${IP_ADDRESS}:9443\"\n" | tee /mnt/docker/traefik/config/portainer-route.yml > /dev/null
+      servers:\n\
+        - url: \"https://${IP_ADDRESS}:9443\"\n" | tee /mnt/docker/traefik/config/portainer-route.yml > /dev/null
 ```
 
 ### Edit .env File
@@ -197,26 +197,26 @@ For the *arr apps, you'll be asked to setup authentication. This is optional, bu
 All services are managed by Traefik to simplify routing and access.
 
 * Dashboard (Homarr)
-[https://⟪serverip⟫/]
+  * [App Dashboard](https://⟪serverip⟫/)
 
 * Traefik Proxy (Traefik)
-[https://⟪serverip⟫/dashboard]
+  * [Proxy Dashboard](https://⟪serverip⟫/dashboard)
 
 * Docker Admin (Portainer)
-[https://⟪serverip⟫/docker]
-[https://⟪serverip⟫:9443] (Backup)
+  * [Portainer](https://⟪serverip⟫/docker)
+  * [Portainer - Direct Access](https://⟪serverip⟫:9443)
 
 * Media Apps
-Radarr [https://⟪serverip⟫/movies]
-Sonarr [https://⟪serverip⟫/tv]
-Lidarr [https://⟪serverip⟫/music]
-Readarr [https://⟪serverip⟫/books]
-Prowlarr [https://⟪serverip⟫/idx]
-BitTorrent [https://⟪serverip⟫/download]
+  * [Radarr](https://⟪serverip⟫/movies)
+  * [Sonarr](https://⟪serverip⟫/tv)
+  * [Lidarr](https://⟪serverip⟫/music)
+  * [Readarr](https://⟪serverip⟫/books)
+  * [Prowlarr](https://⟪serverip⟫/idx)
+  * [BitTorrent](https://⟪serverip⟫/download)
 
 * Plex Server
-[https://⟪serverip⟫:8443] (Web UI)
-[http://⟪serverip⟫:32400] (NAT Port Forward)
+  * [Plex Web UI](https://⟪serverip⟫:8443)
+  * [Plex Media Apps Access](http://⟪serverip⟫:32400)
 
 Make sure you enable NAT Port Forwarding on your Router to enjoy access to your content 
 whilst outside your home.
@@ -224,6 +224,6 @@ whilst outside your home.
 
 # Configure Apps
 
-Configuring all these servers will take time, [**TRaSH Guides**](https://trash-guides.info/) is the best place to start.
+Configuring all these servers will take time, (**TRaSH Guides**](https://trash-guides.info/) is the best place to start.
 
 Goodluck!
