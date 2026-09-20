@@ -540,15 +540,21 @@ generate_secrets() {
 # about to advertise. Traefik serves whatever is on disk, so a stale
 # SAN is a silent failure for every client.
 cert_covers_current_address() {
-  local crt="$1" ip san
+  local crt="$1" ip host san
   ip="$(env_get SERVER_IP || printf '')"
-  [[ -n "$ip" ]] || return 0
+  host="$(env_get DOMAIN_NAME || printf '')"
+  [[ -n "$ip" || -n "$host" ]] || return 0
   if [[ -r "$crt" ]]; then
     san="$(openssl x509 -in "$crt" -noout -ext subjectAltName 2>/dev/null)" || return 1
   else
     san="$(sudo openssl x509 -in "$crt" -noout -ext subjectAltName 2>/dev/null)" || return 1
   fi
-  [[ "$san" == *"IP Address:${ip}"* ]]
+  # Both matter. Switching to SSO changes DOMAIN_NAME, and a certificate
+  # still naming the old host is rejected for the new one — checking
+  # only the IP would let that through silently.
+  [[ -z "$ip"   || "$san" == *"IP Address:${ip}"* ]] || return 1
+  [[ -z "$host" || "$san" == *"DNS:${host}"* ]]      || return 1
+  return 0
 }
 
 generate_certificates() {
@@ -572,7 +578,7 @@ generate_certificates() {
       log_skip "Certificate already present and covers this address"
       return 0
     else
-      log_warn "The existing certificate does not cover $(env_get SERVER_IP)."
+      log_warn "The certificate does not cover $(env_get DOMAIN_NAME) / $(env_get SERVER_IP)."
       log_info "Browsers and clients will reject it for that address."
       if confirm "Regenerate it?" y; then
         run sudo rm -f "$crt" "$key"
@@ -806,8 +812,19 @@ install_traefik_config() {
   # both modes — a router pointing at a missing middleware is dropped
   # and its route 404s. Swapping the file switches modes with no
   # restart and no change to any router.
-  run sudo cp "${REPO_ROOT}/config/traefik/dynamic/auth-${AUTH_MODE}.yml" \
-    "${traefik}/config/auth.yml"
+  if [[ "$AUTH_MODE" == "sso" ]] && ! (( DRY_RUN )); then
+    # The SSO document carries an IP-to-hostname redirect, so it needs
+    # both values substituted.
+    local atmp; atmp="$(mktemp)"
+    sed -e "s|__SERVER_IP__|$(env_get SERVER_IP)|g" \
+        -e "s|__DOMAIN_NAME__|$(env_get DOMAIN_NAME)|g" \
+      "${REPO_ROOT}/config/traefik/dynamic/auth-sso.yml" >"$atmp"
+    sudo cp "$atmp" "${traefik}/config/auth.yml"
+    rm -f "$atmp"
+  else
+    run sudo cp "${REPO_ROOT}/config/traefik/dynamic/auth-${AUTH_MODE}.yml" \
+      "${traefik}/config/auth.yml"
+  fi
   log_applied "Installed auth.yml (mode: ${AUTH_MODE})"
 
   if (( WITH_PORTAINER )); then
@@ -857,10 +874,38 @@ create_network() {
   fi
 }
 
+# `compose up` starts the services in the selected profiles but does
+# NOT stop ones whose profile was de-selected — they are part of the
+# file, so --remove-orphans does not consider them orphans. Switching
+# Plex to Jellyfin, or SSO off, would otherwise leave the old
+# container running and still routed.
+prune_inactive_services() {
+  local project; project="$(env_get COMPOSE_PROJECT_NAME)"
+  local -a want=() running=()
+  mapfile -t want < <(compose config --services 2>/dev/null)
+  (( ${#want[@]} )) || return 0
+  mapfile -t running < <(docker ps \
+    --filter "label=com.docker.compose.project=${project}" \
+    --format '{{.Label "com.docker.compose.service"}}' 2>/dev/null)
+
+  local svc keep
+  for svc in "${running[@]}"; do
+    [[ -n "$svc" ]] || continue
+    keep=0
+    local w
+    for w in "${want[@]}"; do [[ "$w" == "$svc" ]] && { keep=1; break; }; done
+    (( keep )) && continue
+    log_info "Stopping ${svc} — no longer in the selected profiles"
+    run docker rm -f "$svc" >/dev/null
+  done
+  return 0
+}
+
 deploy_stack() {
   log_step "Deploying stack"
   run compose pull --quiet
   run compose up -d --remove-orphans
+  prune_inactive_services
   log_applied "Stack deployed"
 
   # Traefik watches its config directory but not the certificate files

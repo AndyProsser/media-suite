@@ -9,8 +9,34 @@
 #
 # Tinyauth's own route is deliberately NOT behind this — you cannot put
 # the login page behind the login.
+#
+# install.sh substitutes __SERVER_IP__ and __DOMAIN_NAME__ when it
+# installs this file.
 http:
+  routers:
+    # With SSO on, Tinyauth checks the requested host against its cookie
+    # domain and rejects a mismatch with a 500 — so an old bookmark to
+    # the server's IP fails opaquely. Redirect those to the hostname
+    # instead. High priority so it wins over the application routers;
+    # :443 only, since the media server and Uptime Kuma are not behind
+    # auth and work fine by IP.
+    sso-ip-redirect:
+      rule: "Host(`__SERVER_IP__`)"
+      priority: 5000
+      entryPoints:
+        - websecure
+      service: noop@internal
+      middlewares:
+        - sso-to-hostname
+      tls: {}
+
   middlewares:
+    sso-to-hostname:
+      redirectRegex:
+        regex: "^https?://[^/]+(.*)$"
+        replacement: "https://__DOMAIN_NAME__${1}"
+        permanent: false
+
     auth:
       forwardAuth:
         address: "http://tinyauth:3000/api/auth/traefik"

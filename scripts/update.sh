@@ -166,6 +166,23 @@ do_update() {
     run compose up -d "$SERVICE"
   else
     run compose up -d --remove-orphans
+    # Changing COMPOSE_PROFILES is how the media server is switched, so
+    # the de-selected one has to be stopped here too.
+    local project; project="$(env_get COMPOSE_PROJECT_NAME)"
+    local -a want=() running=()
+    mapfile -t want < <(compose config --services 2>/dev/null)
+    mapfile -t running < <(docker ps \
+      --filter "label=com.docker.compose.project=${project}" \
+      --format '{{.Label "com.docker.compose.service"}}' 2>/dev/null)
+    local svc w keep
+    for svc in "${running[@]}"; do
+      [[ -n "$svc" ]] || continue
+      keep=0
+      for w in "${want[@]}"; do [[ "$w" == "$svc" ]] && { keep=1; break; }; done
+      (( keep )) && continue
+      log_info "Stopping ${svc} — no longer in the selected profiles"
+      run docker rm -f "$svc" >/dev/null
+    done
   fi
   log_applied "Containers are on the current images for their pinned tags"
 
