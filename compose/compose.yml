@@ -22,6 +22,13 @@ x-logging: &logging
     max-file: ${DOCKERLOGGING_MAXFILE}
     max-size: ${DOCKERLOGGING_MAXSIZE}
 
+# Healthchecks below deliberately use 127.0.0.1, never "localhost".
+# In these images localhost resolves to ::1 first; the apps listen on
+# IPv4 only. curl silently falls back, busybox wget does not — so a
+# wget-based probe fails, the container never reports healthy, and
+# Traefik's Docker provider drops it from routing entirely. The
+# symptom is a 404 from the proxy for a container that is running
+# perfectly well.
 x-arr-service: &arr-service
   restart: unless-stopped
   logging: *logging
@@ -134,7 +141,7 @@ services:
       - /etc/localtime:/etc/localtime:ro
       - ${DOCKERCONFDIR}/homarr:/appdata
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:7575/ >/dev/null 2>&1 || wget -qO- http://localhost:7575/ >/dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:7575/ >/dev/null 2>&1 || wget -qO- http://127.0.0.1:7575/ >/dev/null 2>&1 || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -162,7 +169,7 @@ services:
       - ${DOCKERCONFDIR}/radarr:/config
       - ${DOCKERSTORAGEDIR}:/data
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:7878/movies/ping >/dev/null 2>&1 || wget -qO- http://localhost:7878/movies/ping >/dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:7878/movies/ping >/dev/null 2>&1 || wget -qO- http://127.0.0.1:7878/movies/ping >/dev/null 2>&1 || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -190,7 +197,7 @@ services:
       - ${DOCKERCONFDIR}/sonarr:/config
       - ${DOCKERSTORAGEDIR}:/data
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:8989/tv/ping >/dev/null 2>&1 || wget -qO- http://localhost:8989/tv/ping >/dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8989/tv/ping >/dev/null 2>&1 || wget -qO- http://127.0.0.1:8989/tv/ping >/dev/null 2>&1 || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -218,7 +225,7 @@ services:
       - ${DOCKERCONFDIR}/lidarr:/config
       - ${DOCKERSTORAGEDIR}:/data
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:8686/music/ping >/dev/null 2>&1 || wget -qO- http://localhost:8686/music/ping >/dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8686/music/ping >/dev/null 2>&1 || wget -qO- http://127.0.0.1:8686/music/ping >/dev/null 2>&1 || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -245,7 +252,7 @@ services:
       - /etc/localtime:/etc/localtime:ro
       - ${DOCKERCONFDIR}/prowlarr:/config
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:9696/idx/ping >/dev/null 2>&1 || wget -qO- http://localhost:9696/idx/ping >/dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9696/idx/ping >/dev/null 2>&1 || wget -qO- http://127.0.0.1:9696/idx/ping >/dev/null 2>&1 || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -285,7 +292,7 @@ services:
       - ${DOCKERCONFDIR}/qbittorrent:/config
       - ${DOCKERSTORAGEDIR}:/data
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/ >/dev/null 2>&1 || wget -qO- http://localhost:8080/ >/dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/ >/dev/null 2>&1 || wget -qO- http://127.0.0.1:8080/ >/dev/null 2>&1 || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -325,7 +332,7 @@ services:
       - ${DOCKERCONFDIR}/plex/transcode:/transcode
       - ${DOCKERSTORAGEDIR}:/data
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:32400/identity >/dev/null 2>&1 || wget -qO- http://localhost:32400/identity >/dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:32400/identity >/dev/null 2>&1 || wget -qO- http://127.0.0.1:32400/identity >/dev/null 2>&1 || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -360,7 +367,7 @@ services:
       - ${DOCKERCONFDIR}/jellyfin/cache:/cache
       - ${DOCKERSTORAGEDIR}:/data
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:8096/health >/dev/null 2>&1 || wget -qO- http://localhost:8096/health >/dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8096/health >/dev/null 2>&1 || wget -qO- http://127.0.0.1:8096/health >/dev/null 2>&1 || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -394,7 +401,7 @@ services:
       # Read-only, for container-level monitors.
       - /var/run/docker.sock:/var/run/docker.sock:ro
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:3001/ >/dev/null 2>&1 || wget -qO- http://localhost:3001/ >/dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:3001/ >/dev/null 2>&1 || wget -qO- http://127.0.0.1:3001/ >/dev/null 2>&1 || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5

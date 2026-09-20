@@ -21,6 +21,7 @@ trap 'on_error $LINENO' ERR
 
 CHECK_ONLY=0
 DO_BACKUP=0
+SYNC_TAGS=0
 NO_PRUNE=0
 SERVICE=""
 
@@ -34,6 +35,8 @@ running untouched.
 
 Options:
   --check            Report what would be updated, then exit.
+  --sync-tags        Adopt the image tags recommended in .env.example.
+                     Use after a git pull that bumps a pinned version.
   --backup           Tar application config directories first.
                      Media is never included — it is far too large.
   --service=NAME     Update only this service.
@@ -48,6 +51,7 @@ parse_args() {
   while (( $# )); do
     case "$1" in
       --check)       CHECK_ONLY=1 ;;
+      --sync-tags)   SYNC_TAGS=1 ;;
       --backup)      DO_BACKUP=1 ;;
       --no-prune)    NO_PRUNE=1 ;;
       --service=*)   SERVICE="${1#*=}" ;;
@@ -58,6 +62,34 @@ parse_args() {
     esac
     shift
   done
+}
+
+# Pinned tags live in .env, but the repo's recommended tags live in
+# .env.example. A `git pull` that bumps a tag there would otherwise
+# never reach an existing install — surface the difference.
+report_tag_drift() {
+  local drift=0 key mine theirs
+  while IFS= read -r key; do
+    mine="$(env_get "$key" || printf '')"
+    theirs="$(env_get "$key" "$ENV_EXAMPLE" || printf '')"
+    [[ -n "$theirs" && -n "$mine" && "$mine" != "$theirs" ]] || continue
+    (( drift )) || log_step "Recommended tag changes in .env.example"
+    printf '    %-20s %s  ->  %s\n' "$key" "$mine" "$theirs"
+    drift=1
+  done < <(grep -oE '^[A-Z_]+_TAG' "$ENV_EXAMPLE" | sort -u)
+
+  if (( drift )); then
+    if (( SYNC_TAGS )); then
+      while IFS= read -r key; do
+        theirs="$(env_get "$key" "$ENV_EXAMPLE" || printf '')"
+        [[ -n "$theirs" ]] && run env_set "$key" "$theirs"
+      done < <(grep -oE '^[A-Z_]+_TAG' "$ENV_EXAMPLE" | sort -u)
+      log_applied "Adopted the recommended tags"
+    else
+      log_info ""
+      log_info "Adopt them with: ./scripts/update.sh --sync-tags"
+    fi
+  fi
 }
 
 check_updates() {
@@ -134,6 +166,8 @@ main() {
   require_cmd docker
   printf '%s%s  media-suite updater%s\n' "$C_BOLD" "$C_BLUE" "$C_RESET"
   (( DRY_RUN )) && log_warn "Dry run — nothing will be changed."
+
+  report_tag_drift
 
   if (( CHECK_ONLY )); then
     check_updates

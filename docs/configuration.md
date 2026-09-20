@@ -36,11 +36,35 @@ Detected by `install.sh`; override only if the detection is wrong.
 
 ## Network
 
+Left blank in `.env.example` and detected by `install.sh` on first run. Set one
+by hand and a re-run will never overwrite it — but the installer warns you if
+what is stored no longer matches the host.
+
 | Variable      | Detection                                | Purpose                                                                                                                 |
 | ------------- | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | `DOMAIN_NAME` | `hostname -f`                            | Common name on the generated TLS certificate.                                                                           |
 | `SERVER_IP`   | Address on the default-route interface   | Used in the certificate's SAN, the media server's advertise URL, and the Portainer backend.                             |
 | `LAN_NETWORK` | Interface address, masked to its network | Treated as trusted by Plex for local direct play. Must be `network/prefix`, e.g. `192.168.1.0/24` — not a host address. |
+
+> [!IMPORTANT]
+> The `[auto]` fields in `.env.example` are deliberately **blank**. A non-empty
+> value there would be treated as a deliberate choice and never overwritten,
+> which is exactly how a placeholder address ends up baked into a live install
+> and its TLS certificate.
+
+### If the address changes
+
+A DHCP lease change leaves `SERVER_IP` stale, and the certificate's SAN with it.
+Re-run the installer: it detects the mismatch, offers to update `.env`, notices
+the certificate no longer covers the new address, and offers to regenerate it
+and restart the proxy.
+
+```bash
+./scripts/install.sh                 # detects and offers to fix
+./scripts/install.sh --force-cert    # regenerate the certificate regardless
+```
+
+A DHCP reservation or a static address avoids the problem entirely.
 
 ## Storage
 
@@ -83,10 +107,19 @@ Every image is pinned. There is no `:latest` anywhere, and no Watchtower.
 | --------------------------------------------------------------------------- | --------- |
 | `TRAEFIK_TAG`                                                               | `v3.7`    |
 | `RADARR_TAG`, `SONARR_TAG`, `LIDARR_TAG`, `PROWLARR_TAG`, `QBITTORRENT_TAG` | `release` |
-| `HOMARR_TAG`                                                                | `v1.32.0` |
+| `HOMARR_TAG`                                                                | `v1.77.2` |
 | `PLEX_TAG`, `JELLYFIN_TAG`                                                  | `release` |
 | `UPTIME_KUMA_TAG`                                                           | `2`       |
 | `PORTAINER_TAG`                                                             | `lts`     |
+
+`update.sh --check` also compares your pinned tags against the ones recommended
+in `.env.example` and reports any that have moved — a `git pull` cannot change
+your `.env`, so this is how a repo-side version bump reaches an existing install:
+
+```bash
+./scripts/update.sh --check        # show recommended tag changes
+./scripts/update.sh --sync-tags    # adopt them, then update
+```
 
 `update.sh` pulls the current image _for the tag you have pinned_. To move to a
 new major version, edit the tag here and run `update.sh`. To roll back, put the

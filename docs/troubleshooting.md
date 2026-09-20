@@ -86,13 +86,31 @@ Media can stay on NFS. This is a hard rule, not a tuning preference.
 
 ## A route returns 404
 
-Traefik only routes containers that are up, healthy and labelled. Check the
-proxy dashboard at `https://<server>/admin` — the Routers view shows what
-Traefik actually knows about.
+**A 404 from the proxy almost always means the container is unhealthy, not that
+routing is misconfigured.** Traefik's Docker provider drops unhealthy containers
+from its router table entirely, so a perfectly functional app whose *healthcheck*
+is failing disappears from the proxy and every request to it returns 404.
 
-If a router is missing entirely, the container is probably not on the `traefik`
-network or is still starting. If it is present but failing, check the service's
-own logs.
+```bash
+docker compose -p media-suite ps          # look at the Health column
+docker inspect <container> --format '{{.State.Health.Status}}'
+docker inspect <container> --format '{{range .State.Health.Log}}{{.Output}}{{end}}'
+```
+
+That last command shows what the probe actually printed, which is usually enough
+to explain it.
+
+> [!NOTE]
+> Healthchecks in this stack use `127.0.0.1`, never `localhost`. In these images
+> `localhost` resolves to `::1` first while the apps listen on IPv4 only. `curl`
+> falls back to IPv4 silently; busybox `wget` does not. An image without `curl`
+> — Homarr, for one — therefore fails a `localhost` probe forever, never reports
+> healthy, and 404s from behind the proxy despite running fine.
+
+If the container *is* healthy and you still get a 404, check the proxy dashboard
+at `https://<server>/admin` — the Routers view shows what Traefik knows about. A
+router missing there means the container is not on the `traefik` network or its
+labels did not apply.
 
 ## Port already in use
 

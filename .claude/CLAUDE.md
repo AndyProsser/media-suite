@@ -102,6 +102,17 @@ config directories persist so switching back is lossless.
 - Verify before claiming. `docker compose config -q` for compose changes,
   `shellcheck` for scripts, `--dry-run` before any real run.
 
+## Healthchecks gate routing
+
+Traefik's Docker provider drops unhealthy containers from its router table, so a
+failing healthcheck does not merely look bad — it takes the service off the proxy
+and every request to it returns 404. Healthchecks here are load-bearing.
+
+Always probe **`127.0.0.1`, never `localhost`**. In these images `localhost`
+resolves to `::1` first while the apps listen on IPv4 only; `curl` falls back
+silently, busybox `wget` does not. Homarr ships no `curl`, so a `localhost` probe
+left it permanently unhealthy and invisible to the proxy.
+
 ## Things that look like bugs but are not
 
 - `serversTransport.insecureSkipVerify=true` is deliberate: backends use

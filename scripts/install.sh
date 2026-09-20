@@ -18,17 +18,30 @@ set -euo pipefail
 # shellcheck source=scripts/lib/common.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/common.sh"
 trap 'on_error $LINENO' ERR
+# Must return 0: an EXIT trap's status replaces the script's own exit
+# code, so a bare failing test here would mask every non-zero exit.
+cleanup() {
+  [[ -n "$DRY_ENV_TMP" ]] && rm -f "$DRY_ENV_TMP"
+  return 0
+}
+trap cleanup EXIT
 
 MEDIA_APP=""
 WITH_MONITORING=1
 # Detected host values, kept in memory so --dry-run can report
 # accurately without having written .env.
+ENV_CREATED=0
+# A dry run works against a throwaway copy of .env so every later
+# phase sees realistic values instead of blank auto-detect fields.
+DRY_ENV_TMP=""
 DET_IP=""
 DET_LAN=""
 DET_TZ=""
 DET_FQDN=""
 SKIP_DOCKER=0
 SKIP_CONFIGURE=0
+FORCE_CERT=0
+NEEDS_PROXY_RESTART=0
 DATA_DIR=""
 CONFIG_DIR=""
 
@@ -48,6 +61,7 @@ Options:
   --no-monitoring            Skip Uptime Kuma.
   --skip-docker-install      Fail rather than install Docker if absent.
   --skip-configure           Do not auto-wire the arr apps afterwards.
+  --force-cert               Regenerate the TLS certificate even if one exists.
   --non-interactive          Never prompt; use flags and detected values.
   --dry-run                  Print what would happen, change nothing.
   --verbose                  Echo each command before running it.
@@ -72,6 +86,7 @@ parse_args() {
       --no-monitoring)      WITH_MONITORING=0 ;;
       --skip-docker-install) SKIP_DOCKER=1 ;;
       --skip-configure)     SKIP_CONFIGURE=1 ;;
+      --force-cert)         FORCE_CERT=1 ;;
       --non-interactive)    NON_INTERACTIVE=1 ;;
       --dry-run)            DRY_RUN=1 ;;
       --verbose)            VERBOSE=1 ;;
@@ -278,11 +293,14 @@ configure_env() {
   if [[ ! -f "$ENV_FILE" ]]; then
     if (( DRY_RUN )); then
       log_dry "cp ${ENV_EXAMPLE} ${ENV_FILE}"
-      # Work against the example so later phases have values to read.
-      ENV_FILE="$ENV_EXAMPLE"
+      DRY_ENV_TMP="$(mktemp -t media-suite-dryrun.XXXXXX)"
+      cp "$ENV_EXAMPLE" "$DRY_ENV_TMP"
+      ENV_FILE="$DRY_ENV_TMP"
+      ENV_CREATED=1
     else
       cp "$ENV_EXAMPLE" "$ENV_FILE"
       chmod 600 "$ENV_FILE"
+      ENV_CREATED=1
       log_success "Created .env from .env.example (mode 600)"
     fi
   else
@@ -302,17 +320,21 @@ configure_env() {
   printf '      %-16s %s\n' "LAN network" "${DET_LAN:-<none>}"
   printf '      %-16s %s\n' "Hostname" "$DET_FQDN"
 
-  if (( DRY_RUN )); then
-    log_dry "would write the above into .env"
-    return 0
-  fi
+  (( DRY_RUN )) && log_dry "would write the above into .env"
 
-  env_set_default PUID "$(id -u)"
-  env_set_default PGID "$(id -g)"
-  env_set_default TZ "$DET_TZ"
-  env_set_default DOMAIN_NAME "$DET_FQDN"
-  [[ -n "$DET_IP" ]]  && env_set_default SERVER_IP "$DET_IP"
-  [[ -n "$DET_LAN" ]] && env_set_default LAN_NETWORK "$DET_LAN"
+  # On a brand new .env, detection is authoritative. On a re-run, the
+  # operator's stored values win — env_set_default leaves them alone.
+  local setter=env_set_default
+  (( ENV_CREATED )) && setter=env_set
+
+  "$setter" PUID "$(id -u)"
+  "$setter" PGID "$(id -g)"
+  "$setter" TZ "$DET_TZ"
+  "$setter" DOMAIN_NAME "$DET_FQDN"
+  [[ -n "$DET_IP" ]]  && "$setter" SERVER_IP "$DET_IP"
+  [[ -n "$DET_LAN" ]] && "$setter" LAN_NETWORK "$DET_LAN"
+
+  warn_on_address_drift
 
   [[ -n "$CONFIG_DIR" ]] && env_set DOCKERCONFDIR "$CONFIG_DIR"
   [[ -n "$DATA_DIR" ]]   && env_set DOCKERSTORAGEDIR "$DATA_DIR"
@@ -321,7 +343,7 @@ configure_env() {
   local profiles="$MEDIA_APP"
   (( WITH_MONITORING )) && profiles="${profiles},monitoring"
   env_set COMPOSE_PROFILES "$profiles"
-  log_success "Profiles: ${profiles}"
+  log_applied "Profiles: ${profiles}"
 
   # Advertise URLs depend on the detected address.
   local ip; ip="$(env_get SERVER_IP || printf '')"
@@ -333,8 +355,26 @@ configure_env() {
     fi
   fi
 
-  log_success "Config dir: $(env_get DOCKERCONFDIR)  (must be block storage)"
-  log_success "Data dir:   $(env_get DOCKERSTORAGEDIR)"
+  log_info "Config dir: $(env_get DOCKERCONFDIR)  (must be block storage)"
+  log_info "Data dir:   $(env_get DOCKERSTORAGEDIR)"
+}
+
+# The stored address can fall out of step with reality — a DHCP lease
+# change, or a .env carried over from another machine. Silently wrong
+# here produces a certificate and advertise URL nobody can use.
+warn_on_address_drift() {
+  local stored
+  stored="$(env_get SERVER_IP || printf '')"
+  [[ -n "$DET_IP" && -n "$stored" && "$stored" != "$DET_IP" ]] || return 0
+
+  log_warn "SERVER_IP in .env is ${stored}, but this host is on ${DET_IP}."
+  if confirm "Update .env to ${DET_IP}?" y; then
+    env_set SERVER_IP "$DET_IP"
+    [[ -n "$DET_LAN" ]] && env_set LAN_NETWORK "$DET_LAN"
+    log_success "SERVER_IP updated to ${DET_IP}"
+  else
+    log_warn "Keeping ${stored}. Certificates and advertise URLs will use it."
+  fi
 }
 
 collect_plex_claim() {
@@ -369,11 +409,11 @@ create_directories() {
   log_step "Directories"
 
   local conf data traefik puid pgid
-  conf="$(env_get DOCKERCONFDIR)"
-  data="$(env_get DOCKERSTORAGEDIR)"
-  traefik="$(env_get TRAEFIK_DIR)"
-  puid="$(env_get PUID)"
-  pgid="$(env_get PGID)"
+  conf="$(env_get DOCKERCONFDIR)"   || die "DOCKERCONFDIR is not set in .env"
+  data="$(env_get DOCKERSTORAGEDIR)" || die "DOCKERSTORAGEDIR is not set in .env"
+  traefik="$(env_get TRAEFIK_DIR)"   || die "TRAEFIK_DIR is not set in .env"
+  puid="$(env_get PUID)"             || die "PUID is not set in .env"
+  pgid="$(env_get PGID)"             || die "PGID is not set in .env"
 
   local -a dirs=(
     "${traefik}/acme" "${traefik}/certificates"
@@ -421,6 +461,21 @@ generate_secrets() {
 
 # ── 6. TLS ─────────────────────────────────────────────────────────
 
+# True when the certificate's SAN already lists the address we are
+# about to advertise. Traefik serves whatever is on disk, so a stale
+# SAN is a silent failure for every client.
+cert_covers_current_address() {
+  local crt="$1" ip san
+  ip="$(env_get SERVER_IP || printf '')"
+  [[ -n "$ip" ]] || return 0
+  if [[ -r "$crt" ]]; then
+    san="$(openssl x509 -in "$crt" -noout -ext subjectAltName 2>/dev/null)" || return 1
+  else
+    san="$(sudo openssl x509 -in "$crt" -noout -ext subjectAltName 2>/dev/null)" || return 1
+  fi
+  [[ "$san" == *"IP Address:${ip}"* ]]
+}
+
 generate_certificates() {
   log_step "TLS certificate"
 
@@ -435,8 +490,23 @@ generate_certificates() {
   fi
 
   if sudo test -f "$crt" && sudo test -f "$key"; then
-    log_skip "Certificate already present"
-    return 0
+    if (( FORCE_CERT )); then
+      log_info "Regenerating certificate (--force-cert)"
+      run sudo rm -f "$crt" "$key"
+    elif cert_covers_current_address "$crt"; then
+      log_skip "Certificate already present and covers this address"
+      return 0
+    else
+      log_warn "The existing certificate does not cover $(env_get SERVER_IP)."
+      log_info "Browsers and clients will reject it for that address."
+      if confirm "Regenerate it?" y; then
+        run sudo rm -f "$crt" "$key"
+        NEEDS_PROXY_RESTART=1
+      else
+        log_warn "Keeping the existing certificate."
+        return 0
+      fi
+    fi
   fi
 
   local cn days c st l o subject ip
@@ -511,6 +581,13 @@ deploy_stack() {
   run compose pull --quiet
   run compose up -d --remove-orphans
   log_applied "Stack deployed"
+
+  # Traefik watches its config directory but not the certificate files
+  # themselves, so a replaced certificate needs the proxy restarted.
+  if (( NEEDS_PROXY_RESTART )); then
+    run docker restart proxy
+    log_applied "Restarted proxy to pick up the new certificate"
+  fi
 }
 
 wait_for_health() {

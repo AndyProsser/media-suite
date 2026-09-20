@@ -19,6 +19,10 @@ All notable changes to this project are documented here. Format follows
   switching is lossless.
 - **Uptime Kuma** on its own TLS entrypoint (`:8444`), replacing the Prometheus
   and Grafana stack.
+- **`update.sh --check` reports tag drift** against `.env.example`, with
+  `--sync-tags` to adopt the recommended versions. A `git pull` cannot change an
+  existing `.env`, so without this a repo-side version bump never reaches an
+  installed system.
 - **Host detection** — user IDs, timezone, server address, LAN CIDR and
   hostname are derived rather than asked for. A default install asks two
   questions at most.
@@ -40,6 +44,32 @@ All notable changes to this project are documented here. Format follows
   applies group membership only to new login sessions. It now verifies Docker
   is actually reachable, and if not, stops with exit code 2 and an explanation
   rather than failing mid-deploy. Re-running after a re-login resumes cleanly.
+- **Homarr 404'd from behind the proxy.** Its healthcheck probed `localhost`,
+  which resolves to `::1` first in these images while the app listens on IPv4
+  only. `curl` falls back to IPv4 silently, busybox `wget` does not — and the
+  Homarr image ships no `curl`, so the probe failed forever, the container never
+  reported healthy, and Traefik's Docker provider dropped it from routing
+  entirely. All healthchecks now probe `127.0.0.1`. The bug was latent in every
+  service; only Homarr lacked the `curl` that masked it.
+- **`HOMARR_TAG` was pinned to a stale version** (`v1.32.0`; current is
+  `v1.77.2`) because the registry paginated the tag query used to pick it.
+- **Placeholder values leaked into live installs.** `.env.example` shipped
+  concrete values (`SERVER_IP=192.168.1.2` among them) for fields documented as
+  auto-detected, and `env_set_default` correctly treats any non-empty value as a
+  deliberate choice — so detection never ran and the placeholder was baked into
+  `.env`, the advertise URL, and the TLS certificate's SAN. Those fields are now
+  blank, a freshly created `.env` takes detected values outright, and re-runs
+  still preserve anything set by hand.
+- **The installer now notices address drift**, comparing the stored `SERVER_IP`
+  against the host's actual address and offering to correct it — which also
+  catches DHCP lease changes.
+- **The certificate is checked against the address in use.** If its SAN does not
+  cover the current `SERVER_IP`, the installer offers to regenerate and restarts
+  the proxy afterwards, since Traefik does not reload a replaced certificate on
+  its own. `--force-cert` regenerates unconditionally.
+- **An EXIT trap masked every exit code.** `cleanup` ended on a failing test and
+  a trap's status replaces the script's own, so `install.sh` reported 1 where it
+  meant 2.
 - **Plex never trusted the local network.** The compose file read
   `PLEX_NO_AUTH_NETWORKS`, which was defined nowhere; the env file defined
   `LAN_NETWORK` instead. Now wired together.
