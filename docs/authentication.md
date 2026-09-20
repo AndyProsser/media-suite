@@ -36,16 +36,44 @@ complete a browser login flow, so putting them behind forward auth would break
 every TV and phone app. They already sit on their own entrypoint, so the
 exclusion falls out of the existing routing.
 
+### Requirement: a resolvable hostname
+
+Tinyauth v5 **will not accept an IP address** for its own URL — it exits with
+`ip addresses not allowed`. It also rejects single-label names such as
+`mediabox`, and public-suffix domains, which includes anything under
+`home.arpa`.
+
+So SSO needs a dotted hostname your devices can resolve to this machine:
+
+| Works | Does not |
+|---|---|
+| `media.lan` | `10.0.20.61` — IP address |
+| `media.internal` | `mediabox` — single label |
+| `gamingpc.lan` | `media.home.arpa` — public suffix |
+
+`install.sh` checks this before writing anything and asks for a hostname if the
+detected one will not do, rather than letting Tinyauth fail with a cryptic
+bootstrap error later.
+
+Point the name at the server in whichever of these you already run:
+
+- a DNS entry on your router, or its DHCP host table
+- Pi-hole, AdGuard Home, or another local resolver
+- `/etc/hosts` on each client, as a last resort
+
+The generated TLS certificate includes `DOMAIN_NAME` in its subjectAltName, so
+the hostname works for HTTPS without a second certificate.
+
+**`--auth=none` has no such requirement** and continues to work over plain IP.
+
 ### How it works
 
-[Tinyauth](https://github.com/steveiliop56/tinyauth) (~46 MB) runs on its own TLS
+[Tinyauth](https://github.com/tinyauthapp/tinyauth) (~46 MB) runs on its own TLS
 entrypoint at `:8445` and Traefik asks it about every request to a protected
 route. Unauthenticated requests get a 401 and a redirect to the login page; once
 you have a session cookie every route opens.
 
-The cookie is host-scoped with no `Domain` attribute, and cookies ignore port
-numbers — so one login on `:8445` is honoured on `:443` too. This works when you
-reach the box by IP address, which is the normal case here.
+Cookies ignore port numbers, so one login on `:8445` is honoured on `:443` too.
 
 ```mermaid
 flowchart LR

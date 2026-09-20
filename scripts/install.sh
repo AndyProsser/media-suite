@@ -418,7 +418,6 @@ configure_env() {
   # Advertise URLs depend on the detected address.
   local ip; ip="$(env_get SERVER_IP || printf '')"
   if [[ -n "$ip" ]]; then
-    env_set TINYAUTH_APP_URL "https://${ip}:8445"
     if [[ "$MEDIA_APP" == "plex" ]]; then
       env_set PLEX_ADVERTISE_URL "http://${ip}:32400"
     else
@@ -499,6 +498,7 @@ create_directories() {
     dirs+=("${conf}/jellyfin/config" "${conf}/jellyfin/cache")
   fi
   (( WITH_MONITORING )) && dirs+=("${conf}/uptime-kuma")
+  [[ "$AUTH_MODE" == "sso" ]] && dirs+=("${conf}/tinyauth")
 
   local t
   for t in movies tv music; do
@@ -612,6 +612,62 @@ generate_certificates() {
 # interpolate, and secrets in the environment show up in
 # `docker inspect`. Both files are written here, mode 600, and the
 # password itself is never echoed, logged, or stored in plaintext.
+# Tinyauth v5 will not accept just any host in its app URL. It
+# refuses IP addresses, single-label names, and public-suffix domains
+# — which includes home.arpa, the obvious choice for a homelab. A bad
+# value surfaces as a cryptic bootstrap failure, so it is checked here
+# instead.
+valid_sso_host() {
+  local h="$1"
+  [[ -n "$h" ]] || return 1
+  [[ "$h" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]] && return 1   # IP address
+  [[ "$h" == *.* ]] || return 1                             # single label
+  case "$h" in
+    home.arpa|*.home.arpa) return 1 ;;                      # public suffix
+  esac
+  return 0
+}
+
+# Picks the host the login page will live on, and stores it. Only
+# called when SSO is selected.
+configure_sso_host() {
+  [[ "$AUTH_MODE" == "sso" ]] || return 0
+
+  local host existing
+  existing="$(env_get TINYAUTH_APP_URL 2>/dev/null || printf '')"
+  if [[ -n "$existing" ]]; then
+    host="${existing#https://}"; host="${host%%:*}"
+    if valid_sso_host "$host"; then
+      log_skip "SSO hostname: ${host}"
+      return 0
+    fi
+    log_warn "Stored SSO hostname '${host}' is not usable."
+  fi
+
+  host="$(env_get DOMAIN_NAME 2>/dev/null || printf '')"
+  if ! valid_sso_host "$host"; then
+    log_warn "Single sign-on needs a hostname, and '${host:-<unset>}' will not do."
+    log_info "Tinyauth refuses IP addresses, single-label names, and anything"
+    log_info "under home.arpa. It must be a dotted name your devices can"
+    log_info "resolve to this machine — for example media.lan."
+    if (( DRY_RUN )); then
+      log_dry "a real run would stop here until a usable hostname is set"
+      return 0
+    fi
+    if (( NON_INTERACTIVE )); then
+      die "Set DOMAIN_NAME to a resolvable dotted hostname, or install with --auth=none."
+    fi
+    host="$(ask 'Hostname for the login page' 'media.lan')"
+    valid_sso_host "$host" || die "'${host}' is not usable as an SSO hostname."
+    env_set DOMAIN_NAME "$host"
+    log_warn "Point ${host} at $(env_get SERVER_IP) in your router or hosts file,"
+    log_warn "or the login page will not resolve for clients."
+  fi
+
+  env_set TINYAUTH_APP_URL "https://${host}:8445"
+  log_success "SSO hostname: ${host}"
+}
+
 configure_sso() {
   [[ "$AUTH_MODE" == "sso" ]] || return 0
   log_step "Single sign-on"
@@ -658,11 +714,13 @@ configure_sso() {
   # tinyauth's own CLI does the bcrypt hashing. Its output is filtered
   # to the user:hash line and written straight to the file — nothing
   # reaches the terminal.
+  # v5 prints a human-readable block rather than a log line; the
+  # usable value is the one after TINYAUTH_AUTH_USERS=.
   local users_line
-  users_line="$(docker run --rm "ghcr.io/steveiliop56/tinyauth:$(env_get TINYAUTH_TAG)" \
+  users_line="$(docker run --rm "ghcr.io/tinyauthapp/tinyauth:$(env_get TINYAUTH_TAG)" \
       user create --username admin --password "$password" 2>&1 \
     | sed -E 's/\x1b\[[0-9;]*m//g' \
-    | grep -oE 'user=admin:[^ ]+' | sed 's/^user=//' | tr -d '\n')"
+    | sed -nE 's/^TINYAUTH_AUTH_USERS=(.+)$/\1/p' | tr -d '\r\n')"
 
   [[ "$users_line" == admin:* ]] || die "Could not create the SSO user."
   sudo tee "${dir}/users" >/dev/null <<<"$users_line"
@@ -670,6 +728,8 @@ configure_sso() {
   run sudo chown -R "$(env_get PUID):$(env_get PGID)" "$dir"
   log_applied "Created SSO account 'admin'"
 
+  # v5 creates tinyauth.db here on first start, so the directory has to
+  # stay writable by the container.
   if (( generated )); then
     # The password is written to a file rather than printed, so it does
     # not end up in scrollback or a terminal log.
@@ -732,6 +792,18 @@ create_network() {
   else
     run docker network create traefik
     log_applied "Created network 'traefik'"
+  fi
+
+  # Tinyauth trusts forwarded client IPs only from networks it is told
+  # about. Docker assigns the subnet, so it has to be read back rather
+  # than assumed.
+  (( DRY_RUN )) && return 0
+  local subnet
+  subnet="$(docker network inspect traefik \
+    --format '{{range .IPAM.Config}}{{.Subnet}}{{end}}' 2>/dev/null || printf '')"
+  if [[ -n "$subnet" ]]; then
+    env_set TINYAUTH_TRUSTED_PROXIES "$subnet"
+    log_success "Proxy network: ${subnet}"
   fi
 }
 
@@ -847,6 +919,7 @@ main() {
   collect_plex_claim
   create_directories
   generate_secrets
+  configure_sso_host
   configure_sso
   generate_certificates
   install_traefik_config

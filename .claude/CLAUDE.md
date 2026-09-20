@@ -118,6 +118,14 @@ Tinyauth's own route must never sit behind `auth@file` — it serves the login
 page. Plex, Jellyfin and Uptime Kuma are excluded too: media clients cannot
 complete a browser login flow.
 
+Tinyauth is v5 from `ghcr.io/tinyauthapp/tinyauth` — the `steveiliop56` path is
+abandoned after v5.0.7. v5 namespaces all config under `TINYAUTH_*`; the flat v3
+names are ignored *silently*, surfacing as "app URL cannot be empty" rather than
+an unknown-variable error. It also refuses IP addresses, single-label names and
+public-suffix domains for its app URL, writes a SQLite database (so its volume
+must be writable, and it belongs on block storage), and ships its own
+healthcheck — do not add one, the image has neither curl nor wget.
+
 Credentials go in **files**, never the environment: a bcrypt hash contains `$`
 that Compose interpolates, and environment values are visible in
 `docker inspect`. The password is never echoed — when generated it is written to

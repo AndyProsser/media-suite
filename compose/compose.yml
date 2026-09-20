@@ -455,7 +455,7 @@ services:
     <<: *arr-service
     profiles: [sso]
     container_name: tinyauth
-    image: ghcr.io/steveiliop56/tinyauth:${TINYAUTH_TAG}
+    image: ghcr.io/tinyauthapp/tinyauth:${TINYAUTH_TAG}
     labels:
       - traefik.enable=true
       - traefik.docker.network=traefik
@@ -465,30 +465,39 @@ services:
       - traefik.http.routers.tinyauth.tls=true
       - traefik.http.services.tinyauth.loadbalancer.server.port=3000
       # Deliberately NOT behind auth@file: this is the login page.
-      # Forward-auth middleware defined here so it exists only when
-      # this service does.
-      - traefik.http.middlewares.tinyauth.forwardauth.address=http://tinyauth:3000/api/auth/traefik
-      - traefik.http.middlewares.tinyauth.forwardauth.authResponseHeaders=Remote-User,Remote-Name,Remote-Email,Remote-Groups
     environment:
       <<: *common-env
-      APP_URL: ${TINYAUTH_APP_URL}
-      APP_TITLE: media-suite
-      # Credentials are read from files, never the environment: a
-      # bcrypt hash contains $$ that Compose would interpolate, and
-      # secrets do not belong in `docker inspect` output.
-      USERS_FILE: /data/users
-      SECRET_FILE: /data/secret
-      COOKIE_SECURE: "true"
-      DISABLE_CONTINUE: "true"
+      # v5 namespaces everything under TINYAUTH_. The flat names from
+      # v3 (APP_URL, USERS_FILE, ...) are silently ignored, which shows
+      # up as "app URL cannot be empty" rather than an unknown-variable
+      # error — so do not trust a v3 example you find online.
+      TINYAUTH_APPURL: ${TINYAUTH_APP_URL}
+      TINYAUTH_APP_TITLE: media-suite
+      # Credentials come from files, never the environment: a bcrypt
+      # hash contains $$ that Compose would interpolate, and env values
+      # are visible in `docker inspect`.
+      TINYAUTH_AUTH_USERSFILE: /data/users
+      TINYAUTH_SECRETFILE: /data/secret
+      # v5 added a SQLite database for sessions. It lives under
+      # DOCKERCONFDIR with the rest of the databases — block storage,
+      # never NFS.
+      TINYAUTH_DATABASE_PATH: /data/tinyauth.db
+      TINYAUTH_AUTH_SECURECOOKIE: "true"
+      # Only Traefik ever talks to this service. Naming that network
+      # lets Tinyauth trust the forwarded client IP; without it the
+      # container logs "IP access controls will NOT work" on boot.
+      TINYAUTH_AUTH_TRUSTEDPROXIES: ${TINYAUTH_TRUSTED_PROXIES}
     volumes:
       - /etc/localtime:/etc/localtime:ro
-      - ${DOCKERCONFDIR}/tinyauth:/data:ro
-    healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:3000/api/healthcheck >/dev/null 2>&1 || wget -qO- http://127.0.0.1:3000/api/healthcheck >/dev/null 2>&1 || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 30s
+      # Writable: v5 creates tinyauth.db here on first start.
+      - ${DOCKERCONFDIR}/tinyauth:/data
+    # No healthcheck defined here on purpose: the image ships its own
+    # (`tinyauth healthcheck`), which is better than anything written
+    # here could be — v5 contains neither curl nor wget, so an HTTP
+    # probe would fail for want of a client, leaving the container
+    # permanently unhealthy. Traefik drops unhealthy containers from
+    # routing, so that would lock every protected route behind an auth
+    # service it then refuses to reach.
 
 networks:
   traefik:
