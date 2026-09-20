@@ -34,6 +34,12 @@ All notable changes to this project are documented here. Format follows
 
 ### Fixed
 
+- **`install.sh` no longer charges past a docker-group change.** After adding
+  the invoking user to the `docker` group it continued straight into
+  `docker network create`, which fails with "permission denied" because Linux
+  applies group membership only to new login sessions. It now verifies Docker
+  is actually reachable, and if not, stops with exit code 2 and an explanation
+  rather than failing mid-deploy. Re-running after a re-login resumes cleanly.
 - **Plex never trusted the local network.** The compose file read
   `PLEX_NO_AUTH_NETWORKS`, which was defined nowhere; the env file defined
   `LAN_NETWORK` instead. Now wired together.

@@ -105,15 +105,30 @@ for Jellyfin. A distro-packaged nginx or Apache on 80 is the usual culprit.
 
 ## "permission denied" talking to Docker
 
-Your user is not in the `docker` group yet, or the group membership has not
-taken effect in this shell:
+Group membership only applies to **new** login sessions. When `install.sh`
+adds you to the `docker` group, your current shell does not have it yet —
+so the installer stops at that point, exit code 2, and tells you. Log out,
+log back in, and run it again; it is idempotent and picks up where it left off.
+
+To continue without logging out:
 
 ```bash
-id -nG | tr ' ' '\n' | grep -x docker    # is it there?
+sg docker -c "./scripts/install.sh"
 ```
 
-`install.sh` adds you, but group membership only applies to **new** login
-sessions. Log out and back in.
+To check whether this session has the group:
+
+```bash
+id -nG | tr ' ' '\n' | grep -x docker
+```
+
+If that prints `docker` and Docker commands still fail, the daemon itself is
+the problem:
+
+```bash
+systemctl status docker
+sudo systemctl enable --now docker
+```
 
 ## Prowlarr is not syncing indexers
 

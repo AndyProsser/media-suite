@@ -52,6 +52,12 @@ Options:
   --dry-run                  Print what would happen, change nothing.
   --verbose                  Echo each command before running it.
   -h, --help                 This text.
+
+Exit codes:
+  0  Success.
+  2  Paused: you were added to the docker group and must start a new
+     login session before the install can continue. Re-run afterwards;
+     nothing is lost.
 USAGE
 }
 
@@ -165,9 +171,72 @@ install_docker() {
     log_skip "${me} is in the docker group"
   else
     run sudo usermod -aG docker "$me"
-    log_warn "Added ${me} to the docker group — log out and back in for it to take effect."
+    log_warn "Added ${me} to the docker group (applies to new login sessions only)."
     NEEDS_RELOGIN=1
   fi
+}
+
+# ── 2b. Docker access ──────────────────────────────────────────────
+#  Linux applies group membership only to NEW login sessions. If we
+#  just added this user to the docker group, every command from here
+#  on would fail with "permission denied" — so stop cleanly and say
+#  so, rather than dying halfway through the deploy.
+
+pause_for_relogin() {
+  local me; me="$(id -un)"
+  printf '\n%s%s  Install paused — one manual step needed%s\n\n' \
+    "$C_BOLD" "$C_YELLOW" "$C_RESET"
+  printf '  The Docker daemon is running, but this login session does not\n'
+  printf '  have the %sdocker%s group applied — Linux grants group membership\n' \
+    "$C_BOLD" "$C_RESET"
+  printf '  only to sessions started after the change. Until you start a new\n'
+  printf '  one, every Docker command fails with "permission denied".\n\n'
+  printf '  %s is in the group; this shell just predates it.\n\n' "$me"
+  printf '  %sLog out and back in, then run this again:%s\n\n' "$C_BOLD" "$C_RESET"
+  printf '      %s./scripts/install.sh%s\n\n' "$C_CYAN" "$C_RESET"
+  printf '  Nothing is lost. The installer is idempotent — it will skip\n'
+  printf '  everything it has already done and carry on from here.\n\n'
+  printf '  %sDo not want to log out?%s This runs it in a shell that already\n' \
+    "$C_DIM" "$C_RESET"
+  printf '  has the group applied:\n\n'
+  printf '      %ssg docker -c "./scripts/install.sh"%s\n\n' "$C_CYAN" "$C_RESET"
+  exit 2
+}
+
+verify_docker_access() {
+  log_step "Docker access"
+
+  if docker info >/dev/null 2>&1; then
+    log_success "Docker is reachable as $(id -un)"
+    return 0
+  fi
+
+  if (( DRY_RUN )); then
+    log_dry "docker is not reachable yet — a real run would pause here"
+    return 0
+  fi
+
+  # A stopped daemon is a different problem from group membership;
+  # fixing it may be all that is needed.
+  if have_cmd systemctl && ! systemctl is-active --quiet docker 2>/dev/null; then
+    log_warn "The Docker daemon is not running."
+    if confirm "Start and enable it now?" y; then
+      run sudo systemctl enable --now docker
+      sleep 3
+      if docker info >/dev/null 2>&1; then
+        log_success "Docker started"
+        return 0
+      fi
+    fi
+  fi
+
+  # Daemon is up but we cannot reach it: group membership is the
+  # overwhelmingly likely cause.
+  if [[ -n "${NEEDS_RELOGIN:-}" ]] || ! id -nG | tr ' ' '\n' | grep -qx docker; then
+    pause_for_relogin
+  fi
+
+  die "Cannot reach the Docker daemon. Check with: systemctl status docker"
 }
 
 # ── 3. Configuration ───────────────────────────────────────────────
@@ -520,6 +589,7 @@ main() {
 
   preflight
   install_docker
+  verify_docker_access
   choose_media_app
   configure_env
   collect_plex_claim

@@ -39,6 +39,12 @@ Want to see what it would do first?
 ./scripts/install.sh --dry-run
 ```
 
+> [!NOTE]
+> If Docker was not already installed, the installer adds you to the `docker`
+> group and then **stops**, because Linux only applies group membership to new
+> login sessions. Log out, log back in, and run it again — it is idempotent and
+> resumes from where it paused.
+
 ## What you get
 
 | Service            | Address                     | Purpose                |
