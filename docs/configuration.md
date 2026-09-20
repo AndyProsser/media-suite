@@ -8,10 +8,10 @@ never overwritten by a re-run.
 
 ## Project
 
-| Variable | Default | Purpose |
-|---|---|---|
-| `COMPOSE_PROJECT_NAME` | `media-suite` | Docker project name. Changing it after install orphans the existing containers. |
-| `COMPOSE_PROFILES` | `plex,monitoring` | Which components run. See below. |
+| Variable               | Default           | Purpose                                                                         |
+| ---------------------- | ----------------- | ------------------------------------------------------------------------------- |
+| `COMPOSE_PROJECT_NAME` | `media-suite`     | Docker project name. Changing it after install orphans the existing containers. |
+| `COMPOSE_PROFILES`     | `plex,monitoring` | Which components run. See below.                                                |
 
 ### `COMPOSE_PROFILES`
 
@@ -27,28 +27,28 @@ Portainer is separate: it lives in its own compose file and is enabled with
 
 Detected by `install.sh`; override only if the detection is wrong.
 
-| Variable | Detection | Purpose |
-|---|---|---|
-| `PUID` | `id -u` | User ID the containers run as. Must own the data directories. |
-| `PGID` | `id -g` | Group ID, likewise. |
-| `TZ` | `timedatectl`, `/etc/timezone` | Timezone for logs and scheduling. |
-| `UMASK` | `002` | File creation mask. `002` keeps files group-writable, which matters when several containers share `/data`. |
+| Variable | Detection                      | Purpose                                                                                                    |
+| -------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------- |
+| `PUID`   | `id -u`                        | User ID the containers run as. Must own the data directories.                                              |
+| `PGID`   | `id -g`                        | Group ID, likewise.                                                                                        |
+| `TZ`     | `timedatectl`, `/etc/timezone` | Timezone for logs and scheduling.                                                                          |
+| `UMASK`  | `002`                          | File creation mask. `002` keeps files group-writable, which matters when several containers share `/data`. |
 
 ## Network
 
-| Variable | Detection | Purpose |
-|---|---|---|
-| `DOMAIN_NAME` | `hostname -f` | Common name on the generated TLS certificate. |
-| `SERVER_IP` | Address on the default-route interface | Used in the certificate's SAN, the media server's advertise URL, and the Portainer backend. |
+| Variable      | Detection                                | Purpose                                                                                                                 |
+| ------------- | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `DOMAIN_NAME` | `hostname -f`                            | Common name on the generated TLS certificate.                                                                           |
+| `SERVER_IP`   | Address on the default-route interface   | Used in the certificate's SAN, the media server's advertise URL, and the Portainer backend.                             |
 | `LAN_NETWORK` | Interface address, masked to its network | Treated as trusted by Plex for local direct play. Must be `network/prefix`, e.g. `192.168.1.0/24` — not a host address. |
 
 ## Storage
 
-| Variable | Default | Purpose |
-|---|---|---|
-| `DOCKERCONFDIR` | `/mnt/docker/appdata` | Application config **and SQLite databases**. |
-| `DOCKERSTORAGEDIR` | `/mnt/data` | Media library and downloads. |
-| `TRAEFIK_DIR` | `/mnt/docker/traefik` | Certificates, dynamic config, access logs. |
+| Variable           | Default               | Purpose                                      |
+| ------------------ | --------------------- | -------------------------------------------- |
+| `DOCKERCONFDIR`    | `/mnt/docker/appdata` | Application config **and SQLite databases**. |
+| `DOCKERSTORAGEDIR` | `/mnt/data`           | Media library and downloads.                 |
+| `TRAEFIK_DIR`      | `/mnt/docker/traefik` | Certificates, dynamic config, access logs.   |
 
 > [!IMPORTANT]
 > `DOCKERCONFDIR` **must** be on block storage — local disk or iSCSI. Never
@@ -68,10 +68,10 @@ Set both at install time:
 
 ## Logging
 
-| Variable | Default | Purpose |
-|---|---|---|
-| `DOCKERLOGGING_MAXFILE` | `10` | Rotated log files kept per container. |
-| `DOCKERLOGGING_MAXSIZE` | `200k` | Size at which each rotates. |
+| Variable                | Default | Purpose                               |
+| ----------------------- | ------- | ------------------------------------- |
+| `DOCKERLOGGING_MAXFILE` | `10`    | Rotated log files kept per container. |
+| `DOCKERLOGGING_MAXSIZE` | `200k`  | Size at which each rotates.           |
 
 Defaults cap total container logging at roughly 2 MB per service.
 
@@ -79,16 +79,16 @@ Defaults cap total container logging at roughly 2 MB per service.
 
 Every image is pinned. There is no `:latest` anywhere, and no Watchtower.
 
-| Variable | Default |
-|---|---|
-| `TRAEFIK_TAG` | `v3.7` |
+| Variable                                                                    | Default   |
+| --------------------------------------------------------------------------- | --------- |
+| `TRAEFIK_TAG`                                                               | `v3.7`    |
 | `RADARR_TAG`, `SONARR_TAG`, `LIDARR_TAG`, `PROWLARR_TAG`, `QBITTORRENT_TAG` | `release` |
-| `HOMARR_TAG` | `v1.32.0` |
-| `PLEX_TAG`, `JELLYFIN_TAG` | `release` |
-| `UPTIME_KUMA_TAG` | `2` |
-| `PORTAINER_TAG` | `lts` |
+| `HOMARR_TAG`                                                                | `v1.32.0` |
+| `PLEX_TAG`, `JELLYFIN_TAG`                                                  | `release` |
+| `UPTIME_KUMA_TAG`                                                           | `2`       |
+| `PORTAINER_TAG`                                                             | `lts`     |
 
-`update.sh` pulls the current image *for the tag you have pinned*. To move to a
+`update.sh` pulls the current image _for the tag you have pinned_. To move to a
 new major version, edit the tag here and run `update.sh`. To roll back, put the
 old tag back and run it again — which is the whole reason these are pinned.
 
@@ -97,8 +97,8 @@ and needs bumping by hand.
 
 ## Secrets
 
-| Variable | Purpose |
-|---|---|
+| Variable                | Purpose                          |
+| ----------------------- | -------------------------------- |
 | `SECRET_ENCRYPTION_KEY` | Homarr's at-rest encryption key. |
 
 Generated by `install.sh` with `openssl rand -hex 32`, written straight into
@@ -112,11 +112,11 @@ unreadable.
 
 Only used when `COMPOSE_PROFILES` includes `plex`.
 
-| Variable | Purpose |
-|---|---|
-| `PLEX_CLAIM_TOKEN` | Links the server to your account on first start. From [plex.tv/claim](https://plex.tv/claim); **expires after 4 minutes**. Only needed once. |
-| `PLEX_ADVERTISE_URL` | Helps LAN clients discover the server. Set from `SERVER_IP` at install. |
-| `PLEX_BETA_INSTALL` | Beta builds. Requires an active Plex Pass. |
+| Variable             | Purpose                                                                                                                                      |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PLEX_CLAIM_TOKEN`   | Links the server to your account on first start. From [plex.tv/claim](https://plex.tv/claim); **expires after 4 minutes**. Only needed once. |
+| `PLEX_ADVERTISE_URL` | Helps LAN clients discover the server. Set from `SERVER_IP` at install.                                                                      |
+| `PLEX_BETA_INSTALL`  | Beta builds. Requires an active Plex Pass.                                                                                                   |
 
 `PLEX_NO_AUTH_NETWORKS` is not set here — it is wired to `LAN_NETWORK` in the
 compose file, so there is one place to change your trusted range.
@@ -125,8 +125,8 @@ compose file, so there is one place to change your trusted range.
 
 Only used when `COMPOSE_PROFILES` includes `jellyfin`.
 
-| Variable | Purpose |
-|---|---|
+| Variable                        | Purpose                                                                   |
+| ------------------------------- | ------------------------------------------------------------------------- |
 | `JELLYFIN_PUBLISHED_SERVER_URL` | Advertised to LAN clients for discovery. Set from `SERVER_IP` at install. |
 
 ## TLS certificate
@@ -135,13 +135,13 @@ Used only when `install.sh` generates the self-signed certificate. Changing
 them afterwards has no effect unless you delete the existing certificate and
 re-run.
 
-| Variable | Default |
-|---|---|
-| `CERT_VALIDITY_DAYS` | `7300` (20 years) |
-| `CERT_COUNTRY` | `AU` |
-| `CERT_STATE` | `Western Australia` |
-| `CERT_LOCALITY` | `Perth` |
-| `CERT_ORG` | `HomeLab` |
+| Variable             | Default             |
+| -------------------- | ------------------- |
+| `CERT_VALIDITY_DAYS` | `7300` (20 years)   |
+| `CERT_COUNTRY`       | `AU`                |
+| `CERT_STATE`         | `Western Australia` |
+| `CERT_LOCALITY`      | `Perth`             |
+| `CERT_ORG`           | `HomeLab`           |
 
 The certificate gets `DNS:${DOMAIN_NAME}`, `DNS:localhost` and `IP:${SERVER_IP}`
 in its subjectAltName, so browsers accept it after one warning rather than

@@ -1,7 +1,7 @@
 # Monitoring
 
 The stack includes [Uptime Kuma](https://github.com/louislam/uptime-kuma) as its
-monitoring layer. It answers one question well — *is anything down?* — in about
+monitoring layer. It answers one question well — _is anything down?_ — in about
 100 MB of RAM.
 
 It runs under the `monitoring` profile, enabled by default. To opt out, remove
@@ -28,19 +28,19 @@ So monitors are not created for you. Here is the set to add.
 Create each as an **HTTP(s)** monitor. Because the certificate is self-signed,
 turn **"Ignore TLS/SSL error"** on for every one of them.
 
-| Name | URL | Expected |
-|---|---|---|
-| Homarr | `https://<server>/` | 200 |
-| Radarr | `https://<server>/movies/ping` | 200 |
-| Sonarr | `https://<server>/tv/ping` | 200 |
-| Lidarr | `https://<server>/music/ping` | 200 |
-| Prowlarr | `https://<server>/idx/ping` | 200 |
-| qBittorrent | `https://<server>/download/` | 200 |
-| Traefik | `https://<server>/admin/ping` | 200 |
-| Plex | `https://<server>:8443/identity` | 200 |
-| Jellyfin | `https://<server>:8443/health` | 200 |
+| Name        | URL                              | Expected |
+| ----------- | -------------------------------- | -------- |
+| Homarr      | `https://<server>/`              | 200      |
+| Radarr      | `https://<server>/movies/ping`   | 200      |
+| Sonarr      | `https://<server>/tv/ping`       | 200      |
+| Lidarr      | `https://<server>/music/ping`    | 200      |
+| Prowlarr    | `https://<server>/idx/ping`      | 200      |
+| qBittorrent | `https://<server>/download/`     | 200      |
+| Traefik     | `https://<server>/admin/ping`    | 200      |
+| Plex        | `https://<server>:8443/identity` | 200      |
+| Jellyfin    | `https://<server>:8443/health`   | 200      |
 
-Add the Plex *or* Jellyfin row, whichever you installed.
+Add the Plex _or_ Jellyfin row, whichever you installed.
 
 A 60-second interval is plenty for a home server. The `/ping` endpoints are
 purpose-built health checks and cost the applications almost nothing.
@@ -48,7 +48,7 @@ purpose-built health checks and cost the applications almost nothing.
 ### Docker monitors
 
 The container has `/var/run/docker.sock` mounted read-only, so you can also add
-**Docker Container** monitors. Add a Docker host of type *Socket* pointing at
+**Docker Container** monitors. Add a Docker host of type _Socket_ pointing at
 `/var/run/docker.sock`, then create a monitor per container.
 
 These catch a different failure than the HTTP checks: a container that has

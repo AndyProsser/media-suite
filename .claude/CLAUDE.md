@@ -14,14 +14,14 @@ enterprise deployment.
 
 ## Layout
 
-| Path | Holds |
-|---|---|
-| `compose/` | `compose.yml` (core + profiles), `compose.portainer.yml` (opt-in) |
+| Path              | Holds                                                                         |
+| ----------------- | ----------------------------------------------------------------------------- |
+| `compose/`        | `compose.yml` (core + profiles), `compose.portainer.yml` (opt-in)             |
 | `config/traefik/` | Files copied onto the host by `install.sh` — not read by containers from here |
-| `scripts/` | `install.sh`, `update.sh`, `remove.sh`, `configure.sh` |
-| `scripts/lib/` | `common.sh` (shared bash), `arr_api.py` (REST wiring) |
-| `docs/` | Architecture, configuration reference, troubleshooting |
-| `.env.example` | Every variable, documented. `.env` is generated and gitignored |
+| `scripts/`        | `install.sh`, `update.sh`, `remove.sh`, `configure.sh`                        |
+| `scripts/lib/`    | `common.sh` (shared bash), `arr_api.py` (REST wiring)                         |
+| `docs/`           | Architecture, configuration reference, troubleshooting                        |
+| `.env.example`    | Every variable, documented. `.env` is generated and gitignored                |
 
 ## Hard rules
 
@@ -34,7 +34,7 @@ redirection — never echoed to stdout, never passed as a command-line argument
 credentials to `arr_api.py` through the environment for this reason.
 
 **The install path may only depend on bash, coreutils, `openssl`, `curl` and
-`ip`.** `install.sh` runs on a bare host *before Docker exists*. Adding a
+`ip`.** `install.sh` runs on a bare host _before Docker exists_. Adding a
 dependency on `jq`, node, or anything installed later breaks bootstrap.
 `configure.sh` may additionally use `python3`, because it only runs after the
 stack is up, and Ubuntu Server ships it.
@@ -96,7 +96,7 @@ config directories persist so switching back is lossless.
 
 - Bash: `set -euo pipefail`, an `ERR` trap, functions for phases, `local` for
   everything not deliberately global.
-- Compose: YAML anchors for shared config; comments explain *why*, not *what*.
+- Compose: YAML anchors for shared config; comments explain _why_, not _what_.
 - Docs: Markdown with Mermaid. Write down rationale, not just steps — a future
   reader should learn why a choice was made, not only what it was.
 - Verify before claiming. `docker compose config -q` for compose changes,

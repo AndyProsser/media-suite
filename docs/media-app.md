@@ -5,15 +5,15 @@ change your mind later without losing anything.
 
 ## The comparison
 
-|  | Plex | Jellyfin |
-|---|---|---|
-| **Licence** | Proprietary | GPL, fully open source |
-| **Cost** | Free tier; Plex Pass for hardware transcoding and mobile sync | Free, everything included |
-| **Account** | Required — the server links to a plex.tv account | None; entirely self-contained |
-| **Hardware transcoding** | Plex Pass only | Free |
-| **Client apps** | Excellent and everywhere: smart TVs, consoles, streaming sticks | Good and improving; patchier on TV platforms |
-| **Remote access** | Built in, brokered through Plex's servers | You arrange it yourself |
-| **Offline dependency** | Some features degrade if plex.tv is unreachable | None |
+|                          | Plex                                                            | Jellyfin                                     |
+| ------------------------ | --------------------------------------------------------------- | -------------------------------------------- |
+| **Licence**              | Proprietary                                                     | GPL, fully open source                       |
+| **Cost**                 | Free tier; Plex Pass for hardware transcoding and mobile sync   | Free, everything included                    |
+| **Account**              | Required — the server links to a plex.tv account                | None; entirely self-contained                |
+| **Hardware transcoding** | Plex Pass only                                                  | Free                                         |
+| **Client apps**          | Excellent and everywhere: smart TVs, consoles, streaming sticks | Good and improving; patchier on TV platforms |
+| **Remote access**        | Built in, brokered through Plex's servers                       | You arrange it yourself                      |
+| **Offline dependency**   | Some features degrade if plex.tv is unreachable                 | None                                         |
 
 **Pick Plex if** you want the smoothest experience on the widest range of
 client devices, especially TVs and consoles, and you do not mind an account and

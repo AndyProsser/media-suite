@@ -53,7 +53,7 @@ flowchart TB
 
 Two directories, two very different jobs:
 
-**`DOCKERCONFDIR`** holds application config *and databases*. Every \*arr app is
+**`DOCKERCONFDIR`** holds application config _and databases_. Every \*arr app is
 SQLite-backed. So are Homarr and Uptime Kuma. This directory **must live on
 block storage** — a local disk or an iSCSI LUN.
 
@@ -90,11 +90,11 @@ Some applications tolerate living under a subpath — the \*arr apps take a
 insist on owning `/`. Rather than fight that, those get their own TLS
 entrypoint:
 
-| Entrypoint | Holds `/` | Why |
-|---|---|---|
-| `:443` | Homarr | Dashboard is the natural landing page |
-| `:8443` | Plex or Jellyfin | Neither works reliably under a prefix |
-| `:8444` | Uptime Kuma | No upstream subpath support at all |
+| Entrypoint | Holds `/`        | Why                                   |
+| ---------- | ---------------- | ------------------------------------- |
+| `:443`     | Homarr           | Dashboard is the natural landing page |
+| `:8443`    | Plex or Jellyfin | Neither works reliably under a prefix |
+| `:8444`    | Uptime Kuma      | No upstream subpath support at all    |
 
 Adding a service that needs `/` means adding an entrypoint, not fighting router
 priorities.
@@ -152,7 +152,7 @@ the old tag back, re-run), and the ability to update one service at a time.
 
 An earlier version of this repo carried a Prometheus + Grafana stack. It was
 two services, a scrape config, a dashboard provisioning tree and an auth
-middleware, all to answer one question: *is anything down?*
+middleware, all to answer one question: _is anything down?_
 
 Uptime Kuma answers that directly, in about 100 MB of RAM, with notifications
 built in and no query language to learn. For a dozen containers on one box,
