@@ -1,0 +1,35 @@
+# Traefik dynamic configuration — Portainer route.
+#
+# Installed only when --with-portainer is used. install.sh replaces
+# __SERVER_IP__ with the detected host address.
+#
+# Note: single '$' below, not '$$'. The doubled form is Compose label
+# escaping and is invalid in a file-provider document — the previous
+# version of this file had that bug, so the redirect never matched.
+http:
+  routers:
+    portainer:
+      rule: "PathPrefix(`/docker`)"
+      service: portainer-service
+      entryPoints:
+        - websecure
+      middlewares:
+        - portainer-redirect
+        - portainer-strip
+      tls: {}
+
+  middlewares:
+    portainer-strip:
+      stripPrefix:
+        prefixes:
+          - "/docker"
+    portainer-redirect:
+      redirectRegex:
+        regex: "^(.*)/docker$"
+        replacement: "${1}/docker/"
+
+  services:
+    portainer-service:
+      loadBalancer:
+        servers:
+          - url: "https://__SERVER_IP__:9443"

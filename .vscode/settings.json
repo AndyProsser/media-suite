@@ -1,0 +1,103 @@
+{
+  // ── Editing ──────────────────────────────────────────────────────
+  "editor.formatOnSave": true,
+  "editor.rulers": [72, 80],
+  "files.trimTrailingWhitespace": true,
+  "files.insertFinalNewline": true,
+
+  // ── File types ───────────────────────────────────────────────────
+  "files.associations": {
+    ".env.example": "dotenv",
+    "compose/*.yml": "dockercompose",
+    "config/traefik/**/*.yml": "yaml"
+  },
+
+  // Compose schema: completion and validation for the stack files.
+  "yaml.schemas": {
+    "https://raw.githubusercontent.com/compose-spec/compose-spec/master/schema/compose-spec.json": [
+      "compose/compose.yml",
+      "compose/compose.*.yml"
+    ]
+  },
+  "yaml.format.enable": true,
+  "yaml.customTags": ["!reset", "!override"],
+
+  // ── Shell ────────────────────────────────────────────────────────
+  // -x follows `source` directives; -P . resolves them from the repo
+  // root, which is how CI runs it too.
+  "shellcheck.enable": true,
+  "shellcheck.customArgs": ["-x", "-P", "."],
+  "shellformat.flag": "-i 2 -ci -bn",
+  "[shellscript]": {
+    "editor.defaultFormatter": "foxundermoon.shell-format",
+    "editor.tabSize": 2
+  },
+
+  // ── Markdown ─────────────────────────────────────────────────────
+  "[markdown]": {
+    "editor.wordWrap": "bounded",
+    "editor.wordWrapColumn": 80,
+    "files.trimTrailingWhitespace": false
+  },
+  "markdownlint.config": {
+    "MD013": { "line_length": 100, "tables": false, "code_blocks": false },
+    "MD024": { "siblings_only": true },
+    "MD033": false
+  },
+
+  // ── Workspace noise ──────────────────────────────────────────────
+  "files.exclude": {
+    "**/.remember": true
+  },
+  "search.exclude": {
+    "**/backups": true,
+    "**/assets": true
+  },
+  // .env holds generated secrets. Keep it out of search results and
+  // quick-open so it is harder to paste somewhere by accident.
+  "files.watcherExclude": {
+    "**/backups/**": true
+  },
+
+  // ── Spelling ─────────────────────────────────────────────────────
+  "cSpell.words": [
+    "acme",
+    "appdata",
+    "autoheal",
+    "bittorrent",
+    "buildx",
+    "CIDR",
+    "containerd",
+    "dockerfile",
+    "entrypoints",
+    "healthcheck",
+    "homarr",
+    "hotio",
+    "iscsi",
+    "jellyfin",
+    "keyrings",
+    "lidarr",
+    "loadbalancer",
+    "localtime",
+    "louislam",
+    "middlewares",
+    "packagecloud",
+    "PGID",
+    "portainer",
+    "prowlarr",
+    "PUID",
+    "qbittorrent",
+    "radarr",
+    "rootfolder",
+    "servarr",
+    "sonarr",
+    "stripprefix",
+    "traefik",
+    "TRaSH",
+    "transcode",
+    "umask",
+    "usermod",
+    "websecure",
+    "zoneinfo"
+  ]
+}

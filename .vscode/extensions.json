@@ -1,0 +1,30 @@
+{
+  // Recommended when working on this repo. VS Code offers to install
+  // these on first open; none are required to run the stack.
+  "recommendations": [
+    // Compose files: schema validation and completion.
+    "redhat.vscode-yaml",
+    "ms-azuretools.vscode-containers",
+
+    // The scripts are the heart of this repo — lint and format them.
+    "timonwong.shellcheck",
+    "foxundermoon.shell-format",
+
+    // arr_api.py
+    "ms-python.python",
+
+    // Docs, with Mermaid diagrams rendered in preview.
+    "davidanson.vscode-markdownlint",
+    "bierner.markdown-mermaid",
+
+    // Syntax highlighting for .env / .env.example.
+    "mikestead.dotenv",
+
+    // Shared formatting rules.
+    "editorconfig.editorconfig",
+
+    // Catches typos in docs; dictionary is in settings.json.
+    "streetsidesoftware.code-spell-checker"
+  ],
+  "unwantedRecommendations": []
+}

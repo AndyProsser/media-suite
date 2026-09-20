@@ -1,0 +1,21 @@
+# Traefik dynamic configuration — TLS certificate store.
+#
+# Installed to ${TRAEFIK_DIR}/config/certificates.yml by install.sh.
+# The certificate itself is generated at install time and is NOT in
+# this repo (see .gitignore).
+#
+# To use a real certificate instead of the generated self-signed one,
+# replace cert.crt / cert.key in ${TRAEFIK_DIR}/certificates and
+# restart the proxy. Traefik watches this directory, but a changed
+# certificate file needs the container restarted to be picked up.
+tls:
+  stores:
+    default:
+      defaultCertificate:
+        certFile: /etc/traefik/certificates/cert.crt
+        keyFile: /etc/traefik/certificates/cert.key
+  certificates:
+    - certFile: /etc/traefik/certificates/cert.crt
+      keyFile: /etc/traefik/certificates/cert.key
+      stores:
+        - default

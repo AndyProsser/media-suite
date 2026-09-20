@@ -1,0 +1,113 @@
+# CLAUDE.md — media-suite
+
+Instructions for Claude Code working in this repository.
+
+## What this is
+
+A self-hosted media stack for a single homelab box: Traefik terminating TLS in
+front of Radarr, Sonarr, Lidarr, Prowlarr, qBittorrent, Homarr, Uptime Kuma, and
+either Plex or Jellyfin. Everything is Docker Compose plus bash. There is no
+application code here — the product is the install experience.
+
+Scope is one machine on a LAN. It is not, and should not become, a multi-node or
+enterprise deployment.
+
+## Layout
+
+| Path | Holds |
+|---|---|
+| `compose/` | `compose.yml` (core + profiles), `compose.portainer.yml` (opt-in) |
+| `config/traefik/` | Files copied onto the host by `install.sh` — not read by containers from here |
+| `scripts/` | `install.sh`, `update.sh`, `remove.sh`, `configure.sh` |
+| `scripts/lib/` | `common.sh` (shared bash), `arr_api.py` (REST wiring) |
+| `docs/` | Architecture, configuration reference, troubleshooting |
+| `.env.example` | Every variable, documented. `.env` is generated and gitignored |
+
+## Hard rules
+
+**Never commit `.env`.** It holds generated secrets. `.gitignore` covers it; do
+not add an exception, and do not write real values into `.env.example`.
+
+**Never print a secret.** Generated values go straight into `.env` by
+redirection — never echoed to stdout, never passed as a command-line argument
+(where `ps` would expose them), never written to a log. `configure.sh` passes
+credentials to `arr_api.py` through the environment for this reason.
+
+**The install path may only depend on bash, coreutils, `openssl`, `curl` and
+`ip`.** `install.sh` runs on a bare host *before Docker exists*. Adding a
+dependency on `jq`, node, or anything installed later breaks bootstrap.
+`configure.sh` may additionally use `python3`, because it only runs after the
+stack is up, and Ubuntu Server ships it.
+
+**No `:latest`.** Every image is pinned to a tag in `.env`. There is no
+Watchtower — updates are a deliberate act via `update.sh`, so a bad upstream
+release cannot land unannounced. Rollback is editing a tag and re-running.
+
+**Scripts stay shellcheck-clean and support `--dry-run`.** Verify with:
+
+```bash
+shellcheck -x -P . scripts/*.sh scripts/lib/*.sh
+```
+
+Any new destructive operation goes through `run` so `--dry-run` covers it.
+
+**Idempotence is not optional.** Every script is re-runnable. Phases check
+whether their work is already done before acting. `arr_api.py` looks up each
+entry by name before creating it.
+
+## Storage — the rule that matters most
+
+`DOCKERCONFDIR` holds **SQLite databases** (every arr app, Homarr, Uptime Kuma).
+It must live on **block storage** — iSCSI or a local disk. **Never NFS.** File
+locking over NFS is not reliable enough for concurrent writes and will corrupt
+these databases.
+
+`DOCKERSTORAGEDIR` is bulk media and downloads: large files, single writer, no
+locking requirements. NFS is fine and appropriate here.
+
+This split is the single most consequential deployment decision in the repo.
+Do not blur it, and do not suggest putting appdata on an NFS share.
+
+## Routing convention
+
+Traefik fronts everything. Apps that tolerate a subpath get a path prefix on
+`:443` with their URL base configured to match. Apps that insist on owning `/`
+get their own TLS entrypoint:
+
+- `:443` → Homarr at `/`, everything else on a prefix
+- `:8443` → Plex or Jellyfin
+- `:8444` → Uptime Kuma (no upstream subpath support)
+
+Adding a service that needs `/` means adding an entrypoint, not fighting
+priorities.
+
+Note the escaping difference: `$$` in Compose **labels**, single `$` in Traefik
+**file-provider** YAML. Mixing these up silently breaks redirects — it was a
+real bug in the original repo.
+
+## Media app selection
+
+Plex and Jellyfin are both defined in `compose.yml`, gated by Compose profiles
+and selected through `COMPOSE_PROFILES` in `.env`. Never add a second compose
+file or an `-f` chain for this. Switching is one line plus `update.sh`; both
+config directories persist so switching back is lossless.
+
+## Conventions
+
+- Bash: `set -euo pipefail`, an `ERR` trap, functions for phases, `local` for
+  everything not deliberately global.
+- Compose: YAML anchors for shared config; comments explain *why*, not *what*.
+- Docs: Markdown with Mermaid. Write down rationale, not just steps — a future
+  reader should learn why a choice was made, not only what it was.
+- Verify before claiming. `docker compose config -q` for compose changes,
+  `shellcheck` for scripts, `--dry-run` before any real run.
+
+## Things that look like bugs but are not
+
+- `serversTransport.insecureSkipVerify=true` is deliberate: backends use
+  self-signed certs or plain HTTP inside the Docker network.
+- qBittorrent's middleware order is `redirect,strip` and must stay that way —
+  strip-first means the trailing-slash redirect can never match.
+- Homarr, the media app and Uptime Kuma all use `PathPrefix(`/`)` at
+  `priority=1`. Distinct entrypoints keep them apart; the low priority keeps
+  them from shadowing the path-prefixed apps.

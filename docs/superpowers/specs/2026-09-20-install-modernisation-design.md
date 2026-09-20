@@ -67,7 +67,7 @@ of truth for all state. `docker compose -p media-suite` supplies the rest.
 
 ## 5. Repository Layout
 
-```
+```text
 media-suite/
 ├── .claude/
 │   └── CLAUDE.md               # project instructions for Claude Code
@@ -271,7 +271,6 @@ Every destructive path prints exactly what will be deleted and requires confirma
 unless `--non-interactive` is given. `--purge-media` is never implied and always
 requires its own flag, even non-interactively.
 
-
 ### 8.5 Automation Scope
 
 The target is a working stack from `./scripts/install.sh` with **no arguments and at
@@ -349,7 +348,6 @@ during implementation — probe binaries differ between bases.
 Services holding a path prefix have their URL base configured to match
 (`RADARR__SERVER__URLBASE=/movies` and friends) so generated links stay correct behind
 the proxy.
-
 
 ## 9a. Uptime Monitoring — Uptime Kuma
 

@@ -1,0 +1,47 @@
+# ===================================================================
+#  Portainer — optional container management GUI
+# ===================================================================
+#  Opt in with: ./scripts/install.sh --with-portainer
+#
+#  Portainer is NOT the deployment mechanism for this stack — the
+#  scripts drive Compose directly. This is here only for operators who
+#  want a web UI for inspecting containers and logs.
+#
+#  Its Traefik route is a file-provider rule rather than a label,
+#  because Portainer serves HTTPS on 9443 with its own self-signed
+#  certificate and needs an explicit https:// backend URL.
+#  install.sh writes config/traefik/dynamic/portainer.yml into place
+#  with SERVER_IP substituted.
+# ===================================================================
+
+services:
+  portainer:
+    container_name: portainer
+    image: portainer/portainer-ce:${PORTAINER_TAG}
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-file: ${DOCKERLOGGING_MAXFILE}
+        max-size: ${DOCKERLOGGING_MAXSIZE}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /etc/localtime:/etc/localtime:ro
+      - portainer_data:/data
+    ports:
+      - 9443:9443
+    networks: [traefik]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- --no-check-certificate https://localhost:9443/api/status >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+networks:
+  traefik:
+    external: true
+
+volumes:
+  portainer_data:
+    name: portainer_data

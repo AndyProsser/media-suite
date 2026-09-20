@@ -1,0 +1,87 @@
+name: lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  shell:
+    name: Shell scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: ShellCheck
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq shellcheck
+          # -x follows sourced files; -P . resolves them from the repo root.
+          shellcheck -x -P . scripts/*.sh scripts/lib/*.sh
+
+      - name: Verify every script runs --help without a .env
+        run: |
+          for s in scripts/install.sh scripts/update.sh scripts/remove.sh scripts/configure.sh; do
+            echo "── $s"
+            bash "$s" --help >/dev/null || exit 1
+          done
+
+  python:
+    name: Python
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile check
+        run: python3 -m py_compile scripts/lib/arr_api.py
+      - name: Ruff
+        run: |
+          pip install --quiet ruff
+          ruff check scripts/lib/arr_api.py
+
+  compose:
+    name: Compose files
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        profile: [plex, jellyfin]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build a throwaway .env
+        run: |
+          cp .env.example .env
+          sed -i "s/^COMPOSE_PROFILES=.*/COMPOSE_PROFILES=${{ matrix.profile }},monitoring/" .env
+          sed -i "s/^SECRET_ENCRYPTION_KEY=.*/SECRET_ENCRYPTION_KEY=$(openssl rand -hex 32)/" .env
+
+      - name: Validate (${{ matrix.profile }})
+        run: |
+          docker compose --env-file .env \
+            -f compose/compose.yml -f compose/compose.portainer.yml config -q
+
+      - name: Confirm the right media server is selected
+        run: |
+          services=$(docker compose --env-file .env -f compose/compose.yml config --services)
+          echo "$services"
+          echo "$services" | grep -qx "${{ matrix.profile }}" \
+            || { echo "::error::${{ matrix.profile }} not in the resolved services"; exit 1; }
+          # The other one must NOT be present.
+          other=$([ "${{ matrix.profile }}" = plex ] && echo jellyfin || echo plex)
+          if echo "$services" | grep -qx "$other"; then
+            echo "::error::$other should not be active for profile ${{ matrix.profile }}"; exit 1
+          fi
+
+  markdown:
+    name: Markdown
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DavidAnson/markdownlint-cli2-action@v19
+        with:
+          globs: "**/*.md"

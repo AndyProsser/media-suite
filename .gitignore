@@ -1,0 +1,39 @@
+# ── Secrets & local configuration ──────────────────────────────────
+# .env holds generated secrets and host-specific paths. Never commit it.
+.env
+.env.*
+!.env.example
+
+# ── TLS material ───────────────────────────────────────────────────
+*.key
+*.crt
+*.pem
+*.p12
+*.pfx
+
+# ── Runtime & backups ──────────────────────────────────────────────
+backups/
+*.tar.gz
+logs/
+*.log
+
+# ── Tooling state ──────────────────────────────────────────────────
+.remember/
+__pycache__/
+*.pyc
+# install.sh writes this marker when --with-portainer is used.
+.portainer-enabled
+
+# ── OS cruft ───────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Editors ────────────────────────────────────────────────────────
+*.swp
+*.swo
+*~
+.idea/
+# .vscode is intentionally tracked: shared extension and setting
+# recommendations are part of the repo. Ignore only personal overrides.
+.vscode/*.local.json

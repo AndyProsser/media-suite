@@ -1,0 +1,16 @@
+{
+  "config": {
+    "MD013": { "line_length": 100, "tables": false, "code_blocks": false },
+    "MD024": { "siblings_only": true },
+    // Inline HTML is used for layout in a few docs.
+    "MD033": false,
+    // The README opens with a badge block rather than a heading.
+    "MD041": false,
+    // Table pipe alignment and emphasis style are both reformatted by
+    // prettier-on-save in this workspace. Linting them just makes the
+    // two tools argue; neither affects how the page renders.
+    "MD060": false,
+    "MD049": false
+  },
+  "ignores": ["node_modules", ".remember"]
+}
