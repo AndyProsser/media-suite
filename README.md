@@ -26,7 +26,8 @@ That is the whole thing. The installer detects your user IDs, timezone, IP
 address and LAN range; installs Docker if it is missing; generates secrets and
 a TLS certificate; brings the stack up; and then wires the apps to each other.
 
-It asks you three things: **which media server**, **how to handle logins**, and — if you chose Plex
+It asks you three things: **which media server**, **how to handle logins**
+(default: none), and — if you chose Plex
 — your [claim token](https://plex.tv/claim). Skip even those:
 
 ```bash
@@ -65,15 +66,20 @@ The certificate is self-signed, so your browser will warn you once.
 
 ## Logins
 
-By default one account covers everything reached through the proxy — the
-dashboard, all four arr apps, qBittorrent, Portainer, and the Traefik dashboard
-(which previously had no authentication at all). Plex/Jellyfin and Uptime Kuma
-keep their own accounts; nothing can remove those.
+By default there is **no login on the LAN** for the arr apps or qBittorrent —
+nothing extra to run, and it works over a plain IP address.
+
+Optionally, one account can cover everything reached through the proxy: the
+dashboard, all four arr apps, qBittorrent, Portainer, and the Traefik dashboard.
+Plex/Jellyfin and Uptime Kuma keep their own accounts either way.
 
 ```bash
+./scripts/install.sh --auth=none   # default
 ./scripts/install.sh --auth=sso    # one login, via Tinyauth (~46 MB)
-./scripts/install.sh --auth=none   # no login on the LAN
 ```
+
+SSO needs a hostname rather than an IP; `<hostname>.local` works over mDNS with
+no DNS setup at all, and the installer offers it.
 
 Switchable later by re-running. See [docs/authentication.md](docs/authentication.md).
 

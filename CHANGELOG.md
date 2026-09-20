@@ -32,6 +32,12 @@ All notable changes to this project are documented here. Format follows
   and `configure.sh` tells qBittorrent to do the same, so there is no second
   prompt behind the first. Plex/Jellyfin and Uptime Kuma keep their own accounts;
   media clients cannot complete a browser login flow. Switchable by re-running.
+- **`--auth=none` is the default.** SSO needs a hostname and an extra container;
+  the default now needs neither and works over a plain IP.
+- **`<hostname>.local` is offered for SSO**, answered by mDNS rather than DNS, so
+  it resolves on every client with nothing configured. `install.sh` checks for an
+  mDNS responder and offers to install `avahi-daemon`. Verified: Tinyauth v5
+  accepts the name and scopes its cookie to the exact host.
 - **SSO requires a resolvable hostname.** Tinyauth v5 refuses IP addresses,
   single-label names and public-suffix domains (`home.arpa` among them), so
   `install.sh` validates the name up front and asks for one if needed.

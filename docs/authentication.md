@@ -1,10 +1,11 @@
 # Authentication
 
-Choose at install time with `--auth`, or answer the prompt:
+Choose at install time with `--auth`, or answer the prompt. **`none` is the
+default** — it needs nothing extra and works over a plain IP address:
 
 ```bash
+./scripts/install.sh --auth=none   # default: no login on the LAN
 ./scripts/install.sh --auth=sso    # one login for everything
-./scripts/install.sh --auth=none   # no login on the LAN
 ```
 
 Switching later is the same command again — it is one file swap and a profile
@@ -16,7 +17,7 @@ Eight separate credentials: four arr apps, qBittorrent, Homarr, Uptime Kuma, and
 the media server — and the Traefik dashboard, which can rewrite your routing, had
 no authentication at all.
 
-## SSO (recommended)
+## SSO
 
 One account covers everything reached through the proxy on `:443`:
 
@@ -47,15 +48,36 @@ So SSO needs a dotted hostname your devices can resolve to this machine:
 
 | Works | Does not |
 |---|---|
-| `media.lan` | `10.0.20.61` — IP address |
-| `media.internal` | `mediabox` — single label |
-| `gamingpc.lan` | `media.home.arpa` — public suffix |
+| `server.local` | `10.0.20.61` — IP address |
+| `media.lan` | `mediabox` — single label |
+| `media.internal` | `media.home.arpa` — public suffix |
+
+### Use `<hostname>.local` — no DNS required
+
+A `.local` name is answered by **mDNS**, not a DNS server. An mDNS responder
+(`avahi-daemon` on Linux, built into macOS and Windows) advertises this machine
+as `<hostname>.local` automatically, so it resolves on every client with nothing
+configured anywhere — no router entry, no Pi-hole, no hosts file.
+
+Verified working with Tinyauth v5: it accepts the name, and scopes its session
+cookie to `Domain=server.local` — the exact host, not the over-broad `.local` a
+browser would reject.
+
+`install.sh` suggests your machine's own `<hostname>.local`, checks whether an
+mDNS responder is running, and offers to install and enable `avahi-daemon` if
+not. The name must match the system hostname, since that is what gets
+advertised; the installer warns if you pick something else.
+
+One caveat: mDNS answers on the interface the query arrives on, so a machine
+with several networks advertises whichever address faces the client. That is
+normally what you want.
 
 `install.sh` checks this before writing anything and asks for a hostname if the
 detected one will not do, rather than letting Tinyauth fail with a cryptic
 bootstrap error later.
 
-Point the name at the server in whichever of these you already run:
+If you would rather not use mDNS, point the name at the server in whichever of
+these you already run:
 
 - a DNS entry on your router, or its DHCP host table
 - Pi-hole, AdGuard Home, or another local resolver
@@ -122,11 +144,14 @@ to interpolate, and anything in the environment shows up in `docker inspect`.
 To change the password, delete `users` in that directory and re-run
 `./scripts/install.sh`.
 
-## None
+## None (default)
 
 No login on the LAN for the arr apps or qBittorrent. Homarr, Uptime Kuma and the
 media server still have their own accounts — neither option removes those, so
 this gets you from eight credentials to three rather than to zero.
+
+This is the default because it needs no hostname, no DNS and no extra container
+— the stack works over a plain IP address exactly as it always has.
 
 Be clear about what this means: anything that can reach this machine's address
 can add, delete and download whatever it likes, and can reconfigure the proxy.

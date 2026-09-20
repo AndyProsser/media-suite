@@ -104,7 +104,7 @@ config directories persist so switching back is lossless.
 
 ## Authentication
 
-`--auth=sso|none`, stored as the `sso` Compose profile. Every protected router
+`--auth=sso|none`, defaulting to **none**, stored as the `sso` Compose profile. Every protected router
 references a middleware named **`auth@file`**, which `install.sh` writes into
 Traefik's config directory — forward auth to Tinyauth for `sso`, a no-op
 `headers` middleware for `none`.

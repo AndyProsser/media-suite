@@ -332,23 +332,26 @@ choose_auth_mode() {
     AUTH_MODE="none"; log_skip "Authentication already configured: none"; return 0
   fi
   if (( NON_INTERACTIVE )); then
-    AUTH_MODE="sso"; log_info "Defaulting to SSO (--auth not given)"; return 0
+    AUTH_MODE="none"; log_info "Defaulting to no login (--auth not given)"; return 0
   fi
 
   printf '\n    How would you like to handle logins?\n\n'
-  printf '      1) Single sign-on — one account covers the dashboard, all four\n'
+  printf '      1) None           — no login on the LAN for the arr apps and\n'
+  printf '                          qBittorrent. Nothing extra to run, and no\n'
+  printf '                          hostname needed. Anything that can reach\n'
+  printf '                          this box controls your downloads and library.\n'
+  printf '      2) Single sign-on — one account covers the dashboard, all four\n'
   printf '                          arr apps, qBittorrent, Portainer and the\n'
-  printf '                          Traefik dashboard. Adds one 46 MB container.\n'
-  printf '      2) None           — no login on the LAN for the arr apps and\n'
-  printf '                          qBittorrent. Anything that can reach this\n'
-  printf '                          box controls your downloads and library.\n\n'
+  printf '                          Traefik dashboard. Adds one 46 MB container,\n'
+  printf '                          and needs a hostname (not an IP) that your\n'
+  printf '                          devices can resolve.\n\n'
   printf '    Either way Homarr, Uptime Kuma and the media server keep their own\n'
   printf '    accounts — neither option can remove those.\n\n'
   local reply
   read -r -p "    Choice [1]: " reply || true
   case "${reply:-1}" in
-    1|sso|SSO)   AUTH_MODE="sso" ;;
-    2|none|None) AUTH_MODE="none" ;;
+    1|none|None) AUTH_MODE="none" ;;
+    2|sso|SSO)   AUTH_MODE="sso" ;;
     *) die "Invalid choice: ${reply}" ;;
   esac
   log_success "Authentication: ${AUTH_MODE}"
@@ -628,6 +631,39 @@ valid_sso_host() {
   return 0
 }
 
+# A .local name is advertised by an mDNS responder rather than a DNS
+# server, so <hostname>.local resolves for macOS, Windows and Linux
+# clients with nothing configured anywhere. That makes it far and away
+# the least painful way to satisfy Tinyauth's hostname requirement on
+# a network with no local DNS.
+ensure_mdns() {
+  local host="$1"
+  [[ "$host" == *.local ]] || return 0
+
+  if systemctl is-active --quiet avahi-daemon 2>/dev/null; then
+    log_success "mDNS responder running — ${host} resolves with no DNS setup"
+    return 0
+  fi
+
+  if have_cmd avahi-daemon; then
+    log_warn "avahi-daemon is installed but not running; ${host} will not resolve."
+    if confirm "Start and enable it?" y; then
+      run sudo systemctl enable --now avahi-daemon
+      log_applied "mDNS responder started"
+    fi
+    return 0
+  fi
+
+  log_warn "No mDNS responder installed, so ${host} will not resolve for clients."
+  if confirm "Install avahi-daemon now?" y; then
+    run sudo apt-get install -y -qq avahi-daemon libnss-mdns
+    run sudo systemctl enable --now avahi-daemon
+    log_applied "mDNS responder installed and started"
+  else
+    log_warn "Add a DNS entry for ${host} yourself, or SSO will be unreachable."
+  fi
+}
+
 # Picks the host the login page will live on, and stores it. Only
 # called when SSO is selected.
 configure_sso_host() {
@@ -657,13 +693,27 @@ configure_sso_host() {
     if (( NON_INTERACTIVE )); then
       die "Set DOMAIN_NAME to a resolvable dotted hostname, or install with --auth=none."
     fi
-    host="$(ask 'Hostname for the login page' 'media.lan')"
+    # <hostname>.local is advertised automatically by mDNS, so it needs
+    # no DNS entry anywhere. Offer that first.
+    local suggestion
+    suggestion="$(hostname -s 2>/dev/null | tr '[:upper:]' '[:lower:]')"
+    suggestion="${suggestion:-media}.local"
+    printf '\n    %s is suggested: a .local name is answered by mDNS, so it\n' "$suggestion"
+    printf '    resolves on macOS, Windows and Linux with nothing to configure.\n\n'
+    host="$(ask 'Hostname for the login page' "$suggestion")"
     valid_sso_host "$host" || die "'${host}' is not usable as an SSO hostname."
     env_set DOMAIN_NAME "$host"
-    log_warn "Point ${host} at $(env_get SERVER_IP) in your router or hosts file,"
-    log_warn "or the login page will not resolve for clients."
+
+    if [[ "$host" != *.local ]]; then
+      log_warn "Point ${host} at $(env_get SERVER_IP) in your router or hosts file,"
+      log_warn "or the login page will not resolve for clients."
+    elif [[ "$host" != "$suggestion" ]]; then
+      log_warn "mDNS advertises this machine as '${suggestion}', not '${host}'."
+      log_warn "They must match, or change the system hostname to suit."
+    fi
   fi
 
+  ensure_mdns "$host"
   env_set TINYAUTH_APP_URL "https://${host}:8445"
   log_success "SSO hostname: ${host}"
 }
