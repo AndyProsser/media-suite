@@ -298,6 +298,30 @@ choose_media_app() {
   log_success "Media server: ${MEDIA_APP}"
 }
 
+# Adds any setting .env.example defines that .env does not, using the
+# example's value. Auto-detected fields are blank there, so detection
+# below fills them in as it would on a fresh install. This is what
+# makes an existing install survive a repo upgrade that adds settings.
+sync_env_schema() {
+  # The list is materialised BEFORE any write. env_set rewrites .env in
+  # place, and reading the missing-key list lazily from a process
+  # substitution would have it grepping a half-written file — which
+  # reports keys as missing that are merely mid-rewrite, and then
+  # clobbers their values with the example defaults.
+  local -a missing=()
+  mapfile -t missing < <(env_missing_keys)
+  (( ${#missing[@]} )) || return 0
+
+  log_info "New settings introduced by a repo update:"
+  local key
+  for key in "${missing[@]}"; do
+    printf '      %s\n' "$key"
+    env_set "$key" "$(env_get "$key" "$ENV_EXAMPLE" 2>/dev/null || printf '')"
+  done
+  log_applied "Added ${#missing[@]} new setting(s) from .env.example"
+  return 0
+}
+
 choose_auth_mode() {
   [[ -n "$AUTH_MODE" ]] && return 0
 
@@ -349,6 +373,8 @@ configure_env() {
   else
     log_skip ".env exists — existing values will be kept"
   fi
+
+  sync_env_schema
 
   # Detection. env_set_default never overwrites an operator's value.
   DET_TZ="$(detect_timezone || printf 'UTC')"

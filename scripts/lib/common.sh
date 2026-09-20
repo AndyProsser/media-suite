@@ -143,6 +143,30 @@ env_set_default() {
   env_set "$key" "$value"
 }
 
+# env_keys [FILE] — every variable name defined in the file.
+env_keys() {
+  local file="${1:-$ENV_FILE}"
+  [[ -f "$file" ]] || return 1
+  sed -nE 's/^([A-Za-z_][A-Za-z0-9_]*)=.*/\1/p' "$file"
+}
+
+# env_has_key KEY [FILE] — true if the key is DEFINED, even if empty.
+# env_get cannot answer this: it reports an empty value as absent.
+env_has_key() {
+  local key="$1" file="${2:-$ENV_FILE}"
+  [[ -f "$file" ]] && grep -qE "^${key}=" "$file"
+}
+
+# env_missing_keys — keys .env.example defines that .env does not.
+# A `git pull` cannot touch an existing .env, so an upgrade that adds a
+# setting leaves it undefined and Compose warns about it at every run.
+env_missing_keys() {
+  local key
+  while IFS= read -r key; do
+    env_has_key "$key" "$ENV_FILE" || printf '%s\n' "$key"
+  done < <(env_keys "$ENV_EXAMPLE")
+}
+
 require_env_file() {
   [[ -f "$ENV_FILE" ]] || die "No .env found. Run ./scripts/install.sh first."
 }

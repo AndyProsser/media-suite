@@ -67,6 +67,23 @@ parse_args() {
 # Pinned tags live in .env, but the repo's recommended tags live in
 # .env.example. A `git pull` that bumps a tag there would otherwise
 # never reach an existing install — surface the difference.
+# Settings added by a repo update are missing from an existing .env,
+# and Compose warns about each one. install.sh backfills them; this
+# only reports, because a blank auto-detected value would be worse
+# than none.
+report_missing_settings() {
+  local -a missing=()
+  mapfile -t missing < <(env_missing_keys)
+  (( ${#missing[@]} )) || return 0
+
+  log_step "Settings missing from .env"
+  printf '    %s\n' "${missing[@]}"
+  log_info ""
+  log_info "A git pull cannot update .env. Add them with:"
+  log_info "  ./scripts/install.sh"
+  return 0
+}
+
 report_tag_drift() {
   local drift=0 key mine theirs
   while IFS= read -r key; do
@@ -167,6 +184,7 @@ main() {
   printf '%s%s  media-suite updater%s\n' "$C_BOLD" "$C_BLUE" "$C_RESET"
   (( DRY_RUN )) && log_warn "Dry run — nothing will be changed."
 
+  report_missing_settings
   report_tag_drift
 
   if (( CHECK_ONLY )); then
