@@ -86,6 +86,7 @@ failed = 0
 
 # ── Output ─────────────────────────────────────────────────────────
 
+
 def ok(msg: str) -> None:
     print(f"    \033[32m✓\033[0m {msg}", flush=True)
 
@@ -110,6 +111,7 @@ def debug(msg: str) -> None:
 
 # ── HTTP ───────────────────────────────────────────────────────────
 
+
 def _describe_error(body: str) -> str:
     """Turn an arr validation response into one readable line.
 
@@ -133,8 +135,14 @@ def _describe_error(body: str) -> str:
     return str(data)[:300]
 
 
-def api(app_base: str, api_ver: str, key: str, path: str,
-        method: str = "GET", payload: dict | None = None):
+def api(
+    app_base: str,
+    api_ver: str,
+    key: str,
+    path: str,
+    method: str = "GET",
+    payload: dict | None = None,
+):
     """Call an arr API endpoint. Returns parsed JSON, or None on 404."""
     url = f"{GATEWAY}{app_base}/api/{api_ver}/{path.lstrip('/')}"
     data = json.dumps(payload).encode() if payload is not None else None
@@ -168,8 +176,10 @@ def reachable(app_base: str, api_ver: str, key: str) -> bool:
 
 # ── Idempotent operations ──────────────────────────────────────────
 
-def ensure_download_client(name: str, cfg: dict, key: str,
-                           qb_user: str, qb_pass: str) -> None:
+
+def ensure_download_client(
+    name: str, cfg: dict, key: str, qb_user: str, qb_pass: str
+) -> None:
     """Register qBittorrent as a download client in one arr app."""
     global changed, failed
     label = cfg["label"]
@@ -180,8 +190,10 @@ def ensure_download_client(name: str, cfg: dict, key: str,
         return
 
     if DRY_RUN:
-        dry(f"{label}: would add qBittorrent as a download client "
-            f"(category '{cfg['category']}')")
+        dry(
+            f"{label}: would add qBittorrent as a download client "
+            f"(category '{cfg['category']}')"
+        )
         return
 
     payload = {
@@ -217,8 +229,9 @@ def ensure_download_client(name: str, cfg: dict, key: str,
         failed += 1
 
 
-def pick_profile(cfg: dict, key: str, endpoint: str,
-                 prefer: str | None = None) -> int | None:
+def pick_profile(
+    cfg: dict, key: str, endpoint: str, prefer: str | None = None
+) -> int | None:
     """Return a profile id, preferring one by name, else the first."""
     try:
         items = api(cfg["base"], cfg["api"], key, endpoint) or []
@@ -249,18 +262,22 @@ def ensure_root_folder(name: str, cfg: dict, key: str) -> None:
         quality = pick_profile(cfg, key, "qualityprofile", prefer="Standard")
         metadata = pick_profile(cfg, key, "metadataprofile", prefer="Standard")
         if quality is None or metadata is None:
-            warn(f"{label}: no quality/metadata profiles available yet — "
-                 "re-run configure.sh once it has finished initialising.")
+            warn(
+                f"{label}: no quality/metadata profiles available yet — "
+                "re-run configure.sh once it has finished initialising."
+            )
             failed += 1
             return
-        payload.update({
-            "name": cfg["root_folder_name"],
-            "defaultQualityProfileId": quality,
-            "defaultMetadataProfileId": metadata,
-            "defaultMonitorOption": "all",
-            "defaultNewItemMonitorOption": "all",
-            "defaultTags": [],
-        })
+        payload.update(
+            {
+                "name": cfg["root_folder_name"],
+                "defaultQualityProfileId": quality,
+                "defaultMetadataProfileId": metadata,
+                "defaultMonitorOption": "all",
+                "defaultNewItemMonitorOption": "all",
+                "defaultTags": [],
+            }
+        )
 
     if DRY_RUN:
         dry(f"{label}: would set root folder to {path}")
@@ -275,14 +292,14 @@ def ensure_root_folder(name: str, cfg: dict, key: str) -> None:
         failed += 1
 
 
-def ensure_prowlarr_app(name: str, cfg: dict, app_key: str,
-                        prowlarr_key: str) -> None:
+def ensure_prowlarr_app(name: str, cfg: dict, app_key: str, prowlarr_key: str) -> None:
     """Register an arr app in Prowlarr so indexers sync out to it."""
     global changed, failed
     label = cfg["label"]
 
-    existing = api(PROWLARR["base"], PROWLARR["api"], prowlarr_key,
-                   "applications") or []
+    existing = (
+        api(PROWLARR["base"], PROWLARR["api"], prowlarr_key, "applications") or []
+    )
     if any(a.get("name") == label for a in existing):
         skip(f"Prowlarr: {label} application")
         return
@@ -305,8 +322,14 @@ def ensure_prowlarr_app(name: str, cfg: dict, app_key: str,
         ],
     }
     try:
-        api(PROWLARR["base"], PROWLARR["api"], prowlarr_key,
-            "applications", "POST", payload)
+        api(
+            PROWLARR["base"],
+            PROWLARR["api"],
+            prowlarr_key,
+            "applications",
+            "POST",
+            payload,
+        )
         ok(f"Prowlarr: {label} registered for indexer sync")
         changed += 1
     except RuntimeError as exc:
@@ -315,6 +338,7 @@ def ensure_prowlarr_app(name: str, cfg: dict, app_key: str,
 
 
 # ── Entry point ────────────────────────────────────────────────────
+
 
 def main() -> int:
     qb_user = os.environ.get("QBIT_USER", "admin")
@@ -325,13 +349,17 @@ def main() -> int:
     available = {n: k for n, k in keys.items() if k}
 
     if not available:
-        warn("No API keys found. Are the containers running? "
-             "Each app writes its key to config.xml on first start.")
+        warn(
+            "No API keys found. Are the containers running? "
+            "Each app writes its key to config.xml on first start."
+        )
         return 1
 
     if not qb_pass:
-        warn("No qBittorrent password available — download clients will be "
-             "added without one and will need the password set by hand.")
+        warn(
+            "No qBittorrent password available — download clients will be "
+            "added without one and will need the password set by hand."
+        )
 
     print("\n  Download clients and root folders", flush=True)
     for name, key in available.items():
@@ -356,8 +384,10 @@ def main() -> int:
     if DRY_RUN:
         print("  Dry run complete — nothing was changed.\n")
     elif failed:
-        print(f"  {changed} change(s) applied, {failed} failed. "
-              "Re-run once the failing services are healthy.\n")
+        print(
+            f"  {changed} change(s) applied, {failed} failed. "
+            "Re-run once the failing services are healthy.\n"
+        )
         return 1
     elif changed:
         print(f"  {changed} change(s) applied.\n")

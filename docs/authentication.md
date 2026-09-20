@@ -21,16 +21,16 @@ no authentication at all.
 
 One account covers everything reached through the proxy on `:443`:
 
-| Behind the single login | Keeps its own account |
-|---|---|
-| Homarr `/` | Plex or Jellyfin `:8443` |
-| Radarr `/movies` | Uptime Kuma `:8444` |
-| Sonarr `/tv` | |
-| Lidarr `/music` | |
-| Prowlarr `/idx` | |
-| qBittorrent `/download` | |
-| Traefik dashboard `/admin` | |
-| Portainer `/docker` | |
+| Behind the single login    | Keeps its own account    |
+| -------------------------- | ------------------------ |
+| Homarr `/`                 | Plex or Jellyfin `:8443` |
+| Radarr `/movies`           | Uptime Kuma `:8444`      |
+| Sonarr `/tv`               |                          |
+| Lidarr `/music`            |                          |
+| Prowlarr `/idx`            |                          |
+| qBittorrent `/download`    |                          |
+| Traefik dashboard `/admin` |                          |
+| Portainer `/docker`        |                          |
 
 The media server is excluded deliberately: Plex and Jellyfin client apps cannot
 complete a browser login flow, so putting them behind forward auth would break
@@ -46,10 +46,10 @@ Tinyauth v5 **will not accept an IP address** for its own URL — it exits with
 
 So SSO needs a dotted hostname your devices can resolve to this machine:
 
-| Works | Does not |
-|---|---|
-| `server.local` | `10.0.20.61` — IP address |
-| `media.lan` | `mediabox` — single label |
+| Works            | Does not                          |
+| ---------------- | --------------------------------- |
+| `server.local`   | `10.0.20.61` — IP address         |
+| `media.lan`      | `mediabox` — single label         |
 | `media.internal` | `media.home.arpa` — public suffix |
 
 ### Use `<hostname>.local` — no DNS required
@@ -178,8 +178,7 @@ without touching a single router.
 
 ## If you lock yourself out
 
-Tinyauth going down takes the protected routes with it — they will return 502 or
-401. Recovery does not require the login:
+Tinyauth going down takes the protected routes with it — they will return 502 or 401. Recovery does not require the login:
 
 ```bash
 ./scripts/install.sh --auth=none    # drop back to no auth

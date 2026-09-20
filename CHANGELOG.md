@@ -23,7 +23,7 @@ All notable changes to this project are documented here. Format follows
   cannot modify `.env`, so a new variable stayed undefined and Compose warned
   about it on every run. `install.sh` backfills any setting `.env.example`
   defines that `.env` does not, and `update.sh --check` reports them. The drift
-  check previously only compared keys present in *both* files, so brand-new ones
+  check previously only compared keys present in _both_ files, so brand-new ones
   were invisible to it.
 - **Single sign-on, or no sign-on** — `--auth=sso|none`. SSO puts one Tinyauth
   account (Tinyauth v5, ~46 MB) in front of the dashboard, all four arr apps,
@@ -110,7 +110,7 @@ All notable changes to this project are documented here. Format follows
   file, overriding the env value.
 - **The Portainer redirect never matched.** `docker-route.yml` used `$$` in a
   Traefik file-provider document, where a single `$` is correct. `$$` is
-  Compose *label* escaping.
+  Compose _label_ escaping.
 - **qBittorrent's trailing-slash redirect never matched** — the middleware
   chain ran `strip` before `redirect`, so the prefix was already gone by the
   time the redirect tried to match it.

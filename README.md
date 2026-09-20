@@ -48,19 +48,19 @@ Want to see what it would do first?
 
 ## What you get
 
-| Service            | Address                     | Purpose                |
-| ------------------ | --------------------------- | ---------------------- |
-| Homarr             | `https://<server>/`         | Dashboard              |
-| Radarr             | `https://<server>/movies`   | Films                  |
-| Sonarr             | `https://<server>/tv`       | Television             |
-| Lidarr             | `https://<server>/music`    | Music                  |
-| Prowlarr           | `https://<server>/idx`      | Indexer management     |
-| qBittorrent        | `https://<server>/download` | Downloads              |
-| Traefik            | `https://<server>/admin`    | Proxy dashboard        |
-| Plex _or_ Jellyfin | `https://<server>:8443/`    | Media server           |
-| Uptime Kuma        | `https://<server>:8444/`    | Uptime monitoring      |
-| Portainer          | `https://<server>/docker`   | Container GUI (opt-in) |
-| Tinyauth | `https://<server>:8445/` | Sign-in (opt-in, `--auth=sso`) |
+| Service            | Address                     | Purpose                        |
+| ------------------ | --------------------------- | ------------------------------ |
+| Homarr             | `https://<server>/`         | Dashboard                      |
+| Radarr             | `https://<server>/movies`   | Films                          |
+| Sonarr             | `https://<server>/tv`       | Television                     |
+| Lidarr             | `https://<server>/music`    | Music                          |
+| Prowlarr           | `https://<server>/idx`      | Indexer management             |
+| qBittorrent        | `https://<server>/download` | Downloads                      |
+| Traefik            | `https://<server>/admin`    | Proxy dashboard                |
+| Plex _or_ Jellyfin | `https://<server>:8443/`    | Media server                   |
+| Uptime Kuma        | `https://<server>:8444/`    | Uptime monitoring              |
+| Portainer          | `https://<server>/docker`   | Container GUI (opt-in)         |
+| Tinyauth           | `https://<server>:8445/`    | Sign-in (opt-in, `--auth=sso`) |
 
 The certificate is self-signed, so your browser will warn you once.
 
@@ -130,7 +130,7 @@ on NFS.
 | [architecture.md](docs/architecture.md)       | How it fits together, and why it was built this way |
 | [configuration.md](docs/configuration.md)     | Every `.env` variable                               |
 | [media-app.md](docs/media-app.md)             | Plex vs Jellyfin, and switching                     |
-| [authentication.md](docs/authentication.md) | SSO vs none, and how to switch |
+| [authentication.md](docs/authentication.md)   | SSO vs none, and how to switch                      |
 | [monitoring.md](docs/monitoring.md)           | Uptime Kuma setup and the monitor set               |
 | [troubleshooting.md](docs/troubleshooting.md) | When something is wrong                             |
 
