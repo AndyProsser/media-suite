@@ -128,6 +128,7 @@ services:
   homarr:
     <<: *arr-service
     container_name: homarr
+    networks: [traefik, docker_proxy]
     image: ghcr.io/homarr-labs/homarr:${HOMARR_TAG}
     labels:
       - traefik.enable=true
@@ -141,8 +142,14 @@ services:
     environment:
       <<: *common-env
       SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY}
+      # Docker integration. Homarr's app process runs as uid 1000, not
+      # root, so a bind-mounted socket (root:docker 0660) gives it
+      # EACCES — the mount looks right and silently does nothing. It
+      # talks to a read-only proxy over TCP instead, which also avoids
+      # handing a web dashboard root-equivalent control of the host.
+      DOCKER_HOSTNAMES: docker-proxy
+      DOCKER_PORTS: "2375"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
       - /etc/localtime:/etc/localtime:ro
       - ${DOCKERCONFDIR}/homarr:/appdata
     healthcheck:
@@ -151,6 +158,58 @@ services:
       timeout: 10s
       retries: 5
       start_period: 90s
+
+  # ─────────────────────────────────────────────────────────────────
+  #  Docker socket proxy — read-only Docker API for Homarr
+  #
+  #  Bind-mounting the socket into Homarr does not work (its process
+  #  runs as uid 1000, the socket is root:docker 0660) and would be a
+  #  poor idea if it did: the Docker API is root-equivalent, so any
+  #  flaw in the dashboard becomes host compromise.
+  #
+  #  This exposes ONLY the container-listing endpoint, read-only, on an
+  #  internal network with no published ports. Everything else is
+  #  denied by default.
+  # ─────────────────────────────────────────────────────────────────
+  docker-proxy:
+    container_name: docker-proxy
+    image: ghcr.io/tecnativa/docker-socket-proxy:${DOCKER_PROXY_TAG}
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      # Only what Homarr's container widget needs.
+      CONTAINERS: 1
+      # Everything below is denied explicitly rather than by omission,
+      # so a future default change upstream cannot quietly open them.
+      POST: 0
+      BUILD: 0
+      COMMIT: 0
+      CONFIGS: 0
+      DISTRIBUTION: 0
+      EXEC: 0
+      IMAGES: 0
+      INFO: 0
+      NETWORKS: 0
+      NODES: 0
+      PLUGINS: 0
+      SECRETS: 0
+      SERVICES: 0
+      SESSION: 0
+      SWARM: 0
+      SYSTEM: 0
+      TASKS: 0
+      VERSION: 0
+      VOLUMES: 0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks: [docker_proxy]
+    # No ports published: reachable only from the internal network.
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:2375/containers/json >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 15s
 
   # ─────────────────────────────────────────────────────────────────
   #  Radarr — films
@@ -502,3 +561,8 @@ services:
 networks:
   traefik:
     external: true
+  # Internal-only: carries the Docker API between the proxy and Homarr
+  # and nothing else. internal: true means no route off the host.
+  docker_proxy:
+    name: ${COMPOSE_PROJECT_NAME}_docker_proxy
+    internal: true

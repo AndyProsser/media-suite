@@ -25,6 +25,13 @@ All notable changes to this project are documented here. Format follows
   defines that `.env` does not, and `update.sh --check` reports them. The drift
   check previously only compared keys present in _both_ files, so brand-new ones
   were invisible to it.
+- **Homarr's Docker integration now works.** The bind-mounted socket never
+  functioned: Homarr's app process runs as uid 1000 while the socket is
+  `root:docker 0660`, so every container listing failed with `EACCES` while the
+  mount looked correct. It now reads the Docker API through a read-only
+  `docker-socket-proxy` on an internal network, which also avoids giving a web
+  dashboard root-equivalent control of the host. Only container listing is
+  permitted; every other endpoint returns 403.
 - **Single sign-on, or no sign-on** — `--auth=sso|none`. SSO puts one Tinyauth
   account (Tinyauth v5, ~46 MB) in front of the dashboard, all four arr apps,
   qBittorrent,

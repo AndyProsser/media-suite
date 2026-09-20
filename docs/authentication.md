@@ -178,7 +178,8 @@ without touching a single router.
 
 ## If you lock yourself out
 
-Tinyauth going down takes the protected routes with it — they will return 502 or 401. Recovery does not require the login:
+Tinyauth going down takes the protected routes with it — they return 502 or 401.
+Recovery does not require the login:
 
 ```bash
 ./scripts/install.sh --auth=none    # drop back to no auth
