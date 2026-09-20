@@ -1,13 +1,14 @@
 # Installing Docker on Linux (Ubuntu)
 
-Have you always wanted to build your own *Netflix* service so that **YOU** control
+Have you always wanted to build your own _Netflix_ service so that **YOU** control
 the content? This used to be complex, but now with OpenSource platforms and
 containerisation, this is actually easier than ever.
 What you need to get started:
- * An old PC with plenty of disk space
- * A USB Key with [Ubuntu Server](https://ubuntu.com/download/server)
- * A [Plex](https://plex.tv) (Paid or Free)
- * A few hours spare time
+
+- An old PC with plenty of disk space
+- A USB Key with [Ubuntu Server](https://ubuntu.com/download/server)
+- A [Plex](https://plex.tv) (Paid or Free)
+- A few hours spare time
 
 That's it. Once this is all setup, you can enjoy access to a world of content.
 Oh, this guide only convers setting up the platforms. You'll have to work out
@@ -16,7 +17,7 @@ how to make it all work.
 If you need access to this system outside your home, consider setting up a VPN.
 
 > [!IMPORTANT]
-> This project was inspired by others and is designed as a *Proof-of-Concept*.
+> This project was inspired by others and is designed as a _Proof-of-Concept_.
 > What you do with it is up to you. Good luck and happy tinkering.
 
 ## Media Server Dashboard
@@ -36,14 +37,14 @@ Media Suite UI Dashboards
 
 ## Install Prerequisites
 
-```
+```bash
 sudo apt-get update
 sudo apt-get install cron nano jq
 ```
 
-## Set up Docker's apt repository:
+## Set up Docker's apt repository
 
-```
+```bash
 sudo apt-get update
 sudo apt-get install ca-certificates curl
 sudo install -m 0755 -d /etc/apt/keyrings
@@ -53,9 +54,9 @@ echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.
 sudo apt-get update
 ```
 
-## Install Docker packages:
+## Install Docker packages
 
-```
+```bash
 sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 ```
 
@@ -63,38 +64,41 @@ sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin 
 
 To allow non-privileged users to run Docker commands, add your user to the docker group:
 
-```
+```bash
 sudo usermod -aG docker $USER
 sudo chown root:docker /var/run/docker.sock
 sudo chmod 660 /var/run/docker.sock
 newgrp docker
 ```
 
-## Verify the installation:
+## Verify the installation
 
 > [!NOTE]
 > This is only a temporary container. You should remove it later.
 
-```
+```bash
 sudo docker run --name whoami -p 8888:80 -d traefik/whoami
 ```
+
 Test system is working by visiting:
 [http://⟪serverip⟫:8888]
 
-```
+```bash
 sudo docker rm whoami --force
 ```
 
 ## Install Portainer for Web GUI
 
 Create Portainer Compose file
-```
+
+```bash
 nano portainer-compose.yml
 ```
+
 Paste contents of **portainer-compose.yml** in to editor.
 Save file (CTRL+X)
 
-```
+```bash
 docker compose -f portainer-compose.yml -p portainer up -d
 ```
 
@@ -108,7 +112,8 @@ Access Portainer WebUI and create password:
 ### Get User & Group IDs
 
 You need these ID's for the .env file configuration
-```
+
+```env
 PUID=${UID}
 PGID=$(getent group docker | cut -d: -f3)
 echo -e "\nPUID=${PUID}\nPGID=${PGID}"
@@ -116,7 +121,7 @@ echo -e "\nPUID=${PUID}\nPGID=${PGID}"
 
 ### Create Folders
 
-```
+```bash
 sudo mkdir -p /mnt/docker/traefik/{acme,certificates,config,logs}
 sudo mkdir -p /mnt/docker/appdata/{radarr,sonarr,lidarr,readarr,homarr,prowlarr,qbittorrent,plex}
 sudo mkdir -p /mnt/docker/appdata/plex/{config,transcode}
@@ -132,7 +137,7 @@ sudo chown ${PUID}:${PGID} -R /mnt/data
 Create a self-signed certificate. Make sure to change the subject details to match your requirments.
 You can replace this with a valid certificate using LetsEncrypt, but that can be complicated.
 
-```
+```env
 CRT_VALIDITY=7300
 CRT_C=AU
 CRT_S="Western Australia"
@@ -147,7 +152,7 @@ openssl req -x509 -newkey rsa:4096 -keyout /mnt/docker/traefik/certificates/cert
 
 ### Create 'traefik' certificate store
 
-```
+```bash
 echo -e "tls:\n\
   stores:\n\
     default:\n\
@@ -163,7 +168,7 @@ echo -e "tls:\n\
 
 ### Create 'portainer' reverse proxy rules
 
-```
+```bash
 IP_ADDRESS=$(ip -4 addr show $(ip route | grep default | awk '{print $5}') | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
 echo -e "http:\n\
   routers:\n\
@@ -193,7 +198,7 @@ echo -e "http:\n\
 
 ### Create Traefik Network (needed to build new stacks that leverage Traefik)
 
-```
+```bash
 docker network create traefik
 ```
 
@@ -219,7 +224,7 @@ You can monitor the stack from Portainer and view the console logs for each cont
 ### Create Monitoring Systems via Portainer (Optional)
 
 > [!WARNING]
-> WIP: The montioring stack is a *WIP* and not yet complete
+> WIP: The montioring stack is a _WIP_ and not yet complete
 
 1. Access Portainer WebUI [https://⟪serverip⟫:9443/]
 2. Navigate to "Stacks"
@@ -232,39 +237,39 @@ You can monitor the stack from Portainer and view the console logs for each cont
 
 You can monitor the stack from Portainer and view the console logs for each containter.
 
-# Access Services
+## Access Services
 
 All services are managed by Traefik to simplify routing and access.
-For the *arr apps, you'll be asked to setup authentication. This is optional, but recommended.
+For the \*arr apps, you'll be asked to setup authentication. This is optional, but recommended.
 You can find the default qBitTorrent passwords in the respective container logs.
 
-* Dashboard (Homarr)
-  * [App Dashboard] (https://⟪serverip⟫/)
+- Dashboard (Homarr)
+  - [App Dashboard] (https://⟪serverip⟫/)
 
-* Traefik Proxy (Traefik)
-  * [Proxy Dashboard] (https://⟪serverip⟫/dashboard)
+- Traefik Proxy (Traefik)
+  - [Proxy Dashboard] (https://⟪serverip⟫/dashboard)
 
-* Docker Admin (Portainer)
-  * [Portainer] (https://⟪serverip⟫/docker)
-  * [Portainer - Direct Access] (https://⟪serverip⟫:9443)
+- Docker Admin (Portainer)
+  - [Portainer] (https://⟪serverip⟫/docker)
+  - [Portainer - Direct Access] (https://⟪serverip⟫:9443)
 
-* Media Apps
-  * [Radarr] (https://⟪serverip⟫/movies)
-  * [Sonarr] (https://⟪serverip⟫/tv)
-  * [Lidarr] (https://⟪serverip⟫/music)
-  * [Readarr] (https://⟪serverip⟫/books)
-  * [Prowlarr] (https://⟪serverip⟫/idx)
-  * [BitTorrent] (https://⟪serverip⟫/download)
+- Media Apps
+  - [Radarr] (https://⟪serverip⟫/movies)
+  - [Sonarr] (https://⟪serverip⟫/tv)
+  - [Lidarr] (https://⟪serverip⟫/music)
+  - [Readarr] (https://⟪serverip⟫/books)
+  - [Prowlarr] (https://⟪serverip⟫/idx)
+  - [BitTorrent] (https://⟪serverip⟫/download)
 
-* Plex Server
-  * [Plex Web UI] (https://⟪serverip⟫:8443)
-  * [Plex Media Apps Access] (http://⟪serverip⟫:32400)
+- Plex Server
+  - [Plex Web UI] (https://⟪serverip⟫:8443)
+  - [Plex Media Apps Access] (http://⟪serverip⟫:32400)
 
-Make sure you enable NAT Port Forwarding on your Router to enjoy access to your content 
+Make sure you enable NAT Port Forwarding on your Router to enjoy access to your content
 whilst outside your home.
 0.0.0.0:32400/TCP =⟫ ⟪serverip⟫:32400
 
-# Configure Apps
+## Configure Apps
 
 Configuring all these servers will take time, [**TRaSH Guides**](https://trash-guides.info/) is the best place to start.
 
