@@ -131,6 +131,17 @@ that Compose interpolates, and environment values are visible in
 `docker inspect`. The password is never echoed — when generated it is written to
 a file for the operator to read once.
 
+## Docker socket access
+
+Homarr reads the Docker API through `docker-proxy`, never the socket directly.
+Two reasons, both load-bearing: its app process runs as uid 1000 while the
+socket is `root:docker 0660`, so a bind mount silently fails with `EACCES`; and
+the Docker API is root-equivalent, which is too much authority for a dashboard.
+The proxy allows `CONTAINERS` only and denies the rest explicitly.
+
+Traefik keeps direct socket access — it needs it for the Docker provider, and it
+is the component everything else already trusts.
+
 ## Healthchecks gate routing
 
 Traefik's Docker provider drops unhealthy containers from its router table, so a
