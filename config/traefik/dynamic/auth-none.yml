@@ -1,0 +1,18 @@
+# Traefik dynamic configuration — auth middleware, DISABLED.
+#
+# Installed as ${TRAEFIK_DIR}/config/auth.yml by install.sh --auth=none.
+#
+# Every protected router references `auth@file`, so the middleware has
+# to exist in both modes — a router pointing at a missing middleware is
+# dropped by Traefik and its route 404s. This is the no-op version:
+# it sets one response header and nothing else, so requests pass
+# straight through.
+#
+# Switching modes is just swapping this file. Traefik watches the
+# directory and applies it without a restart; routers are untouched.
+http:
+  middlewares:
+    auth:
+      headers:
+        customResponseHeaders:
+          X-Auth-Mode: "none"

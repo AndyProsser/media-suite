@@ -102,6 +102,27 @@ config directories persist so switching back is lossless.
 - Verify before claiming. `docker compose config -q` for compose changes,
   `shellcheck` for scripts, `--dry-run` before any real run.
 
+## Authentication
+
+`--auth=sso|none`, stored as the `sso` Compose profile. Every protected router
+references a middleware named **`auth@file`**, which `install.sh` writes into
+Traefik's config directory — forward auth to Tinyauth for `sso`, a no-op
+`headers` middleware for `none`.
+
+That indirection is load-bearing. The middleware must exist in both modes,
+because a router referencing a missing middleware is dropped by Traefik and its
+route 404s. Never make the middleware label conditional on the profile; swap the
+file instead. Traefik watches the directory, so it applies with no restart.
+
+Tinyauth's own route must never sit behind `auth@file` — it serves the login
+page. Plex, Jellyfin and Uptime Kuma are excluded too: media clients cannot
+complete a browser login flow.
+
+Credentials go in **files**, never the environment: a bcrypt hash contains `$`
+that Compose interpolates, and environment values are visible in
+`docker inspect`. The password is never echoed — when generated it is written to
+a file for the operator to read once.
+
 ## Healthchecks gate routing
 
 Traefik's Docker provider drops unhealthy containers from its router table, so a

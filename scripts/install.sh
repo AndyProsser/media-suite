@@ -27,6 +27,9 @@ cleanup() {
 trap cleanup EXIT
 
 MEDIA_APP=""
+AUTH_MODE=""
+SSO_PASSWORD_FILE=""
+DOCKERCONFDIR_CACHED=""
 WITH_MONITORING=1
 # Detected host values, kept in memory so --dry-run can report
 # accurately without having written .env.
@@ -54,6 +57,10 @@ preserved and only missing pieces are created.
 
 Options:
   --media-app=plex|jellyfin  Which media server to run. Prompted if omitted.
+  --auth=sso|none            sso  : one login (Tinyauth) for the whole admin
+                                    surface, including the Traefik dashboard.
+                             none : no login on the LAN for the arr apps and
+                                    qBittorrent. Prompted if omitted.
   --config-dir=PATH          Application config/databases. Must be block
                              storage (iSCSI or local disk), never NFS.
   --data-dir=PATH            Media library and downloads. NFS is fine.
@@ -79,6 +86,7 @@ parse_args() {
   while (( $# )); do
     case "$1" in
       --media-app=*)        MEDIA_APP="${1#*=}" ;;
+      --auth=*)             AUTH_MODE="${1#*=}" ;;
       --media-app)          MEDIA_APP="${2:-}"; shift ;;
       --config-dir=*)       CONFIG_DIR="${1#*=}" ;;
       --data-dir=*)         DATA_DIR="${1#*=}" ;;
@@ -98,6 +106,9 @@ parse_args() {
 
   if [[ -n "$MEDIA_APP" && "$MEDIA_APP" != "plex" && "$MEDIA_APP" != "jellyfin" ]]; then
     die "--media-app must be 'plex' or 'jellyfin', got '${MEDIA_APP}'"
+  fi
+  if [[ -n "$AUTH_MODE" && "$AUTH_MODE" != "sso" && "$AUTH_MODE" != "none" ]]; then
+    die "--auth must be 'sso' or 'none', got '${AUTH_MODE}'"
   fi
 }
 
@@ -287,6 +298,38 @@ choose_media_app() {
   log_success "Media server: ${MEDIA_APP}"
 }
 
+choose_auth_mode() {
+  [[ -n "$AUTH_MODE" ]] && return 0
+
+  if has_profile sso 2>/dev/null; then
+    AUTH_MODE="sso"; log_skip "Authentication already configured: sso"; return 0
+  fi
+  if [[ -f "$ENV_FILE" ]] && env_get COMPOSE_PROFILES >/dev/null 2>&1; then
+    AUTH_MODE="none"; log_skip "Authentication already configured: none"; return 0
+  fi
+  if (( NON_INTERACTIVE )); then
+    AUTH_MODE="sso"; log_info "Defaulting to SSO (--auth not given)"; return 0
+  fi
+
+  printf '\n    How would you like to handle logins?\n\n'
+  printf '      1) Single sign-on — one account covers the dashboard, all four\n'
+  printf '                          arr apps, qBittorrent, Portainer and the\n'
+  printf '                          Traefik dashboard. Adds one 46 MB container.\n'
+  printf '      2) None           — no login on the LAN for the arr apps and\n'
+  printf '                          qBittorrent. Anything that can reach this\n'
+  printf '                          box controls your downloads and library.\n\n'
+  printf '    Either way Homarr, Uptime Kuma and the media server keep their own\n'
+  printf '    accounts — neither option can remove those.\n\n'
+  local reply
+  read -r -p "    Choice [1]: " reply || true
+  case "${reply:-1}" in
+    1|sso|SSO)   AUTH_MODE="sso" ;;
+    2|none|None) AUTH_MODE="none" ;;
+    *) die "Invalid choice: ${reply}" ;;
+  esac
+  log_success "Authentication: ${AUTH_MODE}"
+}
+
 configure_env() {
   log_step "Configuration"
 
@@ -342,12 +385,14 @@ configure_env() {
   # Profiles are always rewritten: they encode the flags given now.
   local profiles="$MEDIA_APP"
   (( WITH_MONITORING )) && profiles="${profiles},monitoring"
+  [[ "$AUTH_MODE" == "sso" ]] && profiles="${profiles},sso"
   env_set COMPOSE_PROFILES "$profiles"
   log_applied "Profiles: ${profiles}"
 
   # Advertise URLs depend on the detected address.
   local ip; ip="$(env_get SERVER_IP || printf '')"
   if [[ -n "$ip" ]]; then
+    env_set TINYAUTH_APP_URL "https://${ip}:8445"
     if [[ "$MEDIA_APP" == "plex" ]]; then
       env_set PLEX_ADVERTISE_URL "http://${ip}:32400"
     else
@@ -355,7 +400,8 @@ configure_env() {
     fi
   fi
 
-  log_info "Config dir: $(env_get DOCKERCONFDIR)  (must be block storage)"
+  DOCKERCONFDIR_CACHED="$(env_get DOCKERCONFDIR)"
+  log_info "Config dir: ${DOCKERCONFDIR_CACHED}  (must be block storage)"
   log_info "Data dir:   $(env_get DOCKERSTORAGEDIR)"
 }
 
@@ -533,6 +579,85 @@ generate_certificates() {
   log_success "Self-signed certificate created (CN=${cn}, SAN=${san}, ${days} days)"
 }
 
+# ── 6b. SSO credentials ────────────────────────────────────────────
+
+# Tinyauth reads its user list and cookie secret from FILES, not the
+# environment: a bcrypt hash is full of $ that Compose would try to
+# interpolate, and secrets in the environment show up in
+# `docker inspect`. Both files are written here, mode 600, and the
+# password itself is never echoed, logged, or stored in plaintext.
+configure_sso() {
+  [[ "$AUTH_MODE" == "sso" ]] || return 0
+  log_step "Single sign-on"
+
+  local dir; dir="${DOCKERCONFDIR_CACHED}/tinyauth"
+
+  if (( DRY_RUN )); then
+    log_dry "would create an admin account and write ${dir}/{users,secret}"
+    return 0
+  fi
+
+  run sudo mkdir -p "$dir"
+  run sudo chown "$(env_get PUID):$(env_get PGID)" "$dir"
+
+  if sudo test -s "${dir}/users" && sudo test -s "${dir}/secret"; then
+    log_skip "SSO credentials already exist"
+    return 0
+  fi
+
+  # Cookie secret: tinyauth requires exactly 32 characters.
+  sudo tee "${dir}/secret" >/dev/null <<<"$(openssl rand -hex 16)"
+  run sudo chmod 600 "${dir}/secret"
+  log_applied "Generated cookie secret (32 chars)"
+
+  local password generated=0
+  if (( NON_INTERACTIVE )); then
+    password="$(openssl rand -base64 18)"
+    generated=1
+  else
+    local confirm_pw
+    printf '\n    Create the login you will use for the whole stack.\n\n'
+    read -r -s -p "    Password for 'admin' (blank to generate one): " password || true
+    printf '\n'
+    if [[ -z "$password" ]]; then
+      password="$(openssl rand -base64 18)"
+      generated=1
+    else
+      read -r -s -p "    Confirm: " confirm_pw || true
+      printf '\n'
+      [[ "$password" == "$confirm_pw" ]] || die "Passwords did not match."
+    fi
+  fi
+
+  # tinyauth's own CLI does the bcrypt hashing. Its output is filtered
+  # to the user:hash line and written straight to the file — nothing
+  # reaches the terminal.
+  local users_line
+  users_line="$(docker run --rm "ghcr.io/steveiliop56/tinyauth:$(env_get TINYAUTH_TAG)" \
+      user create --username admin --password "$password" 2>&1 \
+    | sed -E 's/\x1b\[[0-9;]*m//g' \
+    | grep -oE 'user=admin:[^ ]+' | sed 's/^user=//' | tr -d '\n')"
+
+  [[ "$users_line" == admin:* ]] || die "Could not create the SSO user."
+  sudo tee "${dir}/users" >/dev/null <<<"$users_line"
+  run sudo chmod 600 "${dir}/users"
+  run sudo chown -R "$(env_get PUID):$(env_get PGID)" "$dir"
+  log_applied "Created SSO account 'admin'"
+
+  if (( generated )); then
+    # The password is written to a file rather than printed, so it does
+    # not end up in scrollback or a terminal log.
+    local pwfile="${dir}/initial-password"
+    sudo tee "$pwfile" >/dev/null <<<"$password"
+    run sudo chmod 600 "$pwfile"
+    run sudo chown "$(env_get PUID):$(env_get PGID)" "$pwfile"
+    SSO_PASSWORD_FILE="$pwfile"
+    log_warn "A password was generated. Read it once, then delete the file:"
+    log_info "  cat ${pwfile} && rm ${pwfile}"
+  fi
+  unset password
+}
+
 install_traefik_config() {
   log_step "Traefik configuration"
 
@@ -540,6 +665,14 @@ install_traefik_config() {
   run sudo cp "${REPO_ROOT}/config/traefik/certificates.yml" \
     "${traefik}/config/certificates.yml"
   log_applied "Installed certificates.yml"
+
+  # Every protected router references auth@file, so this must exist in
+  # both modes — a router pointing at a missing middleware is dropped
+  # and its route 404s. Swapping the file switches modes with no
+  # restart and no change to any router.
+  run sudo cp "${REPO_ROOT}/config/traefik/dynamic/auth-${AUTH_MODE}.yml" \
+    "${traefik}/config/auth.yml"
+  log_applied "Installed auth.yml (mode: ${AUTH_MODE})"
 
   if (( WITH_PORTAINER )); then
     local ip tmp
@@ -647,6 +780,21 @@ print_summary() {
   (( WITH_MONITORING )) && printf '  %-14s %s\n' "Uptime Kuma" "https://${ip}:8444/"
   (( WITH_PORTAINER ))  && printf '  %-14s %s\n' "Portainer"   "https://${ip}/docker"
 
+  printf '\n  %sAuthentication%s\n' "$C_BOLD" "$C_RESET"
+  if [[ "$AUTH_MODE" == "sso" ]]; then
+    printf '    · One account ("admin") covers the dashboard, the arr apps,\n'
+    printf '      qBittorrent, Portainer and the Traefik dashboard.\n'
+    if [[ -n "$SSO_PASSWORD_FILE" ]]; then
+      printf '    %s· Your generated password: cat %s%s\n' "$C_YELLOW" "$SSO_PASSWORD_FILE" "$C_RESET"
+      printf '      Read it once, then delete that file.\n'
+    fi
+    printf '    · Uptime Kuma and the media server keep their own accounts.\n'
+  else
+    printf '    · No login on the LAN for the arr apps or qBittorrent.\n'
+    printf '    · Anything that can reach this box controls your library.\n'
+    printf '    · Switch later with: ./scripts/install.sh --auth=sso\n'
+  fi
+
   printf '\n  %sNotes%s\n' "$C_BOLD" "$C_RESET"
   printf '    · The certificate is self-signed; your browser will warn once.\n'
   printf '    · qBittorrent password: docker logs qbittorrent 2>&1 | grep -i password\n'
@@ -668,10 +816,12 @@ main() {
   install_docker
   verify_docker_access
   choose_media_app
+  choose_auth_mode
   configure_env
   collect_plex_claim
   create_directories
   generate_secrets
+  configure_sso
   generate_certificates
   install_traefik_config
   create_network

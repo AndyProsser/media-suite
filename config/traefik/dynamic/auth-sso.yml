@@ -1,0 +1,22 @@
+# Traefik dynamic configuration — auth middleware, SSO.
+#
+# Installed as ${TRAEFIK_DIR}/config/auth.yml by install.sh --auth=sso.
+#
+# Delegates every request on a protected router to Tinyauth. An
+# unauthenticated request is redirected to the login page on :8445;
+# once a session cookie exists it is accepted on every entrypoint,
+# because cookies are scoped by host and ignore the port.
+#
+# Tinyauth's own route is deliberately NOT behind this — you cannot put
+# the login page behind the login.
+http:
+  middlewares:
+    auth:
+      forwardAuth:
+        address: "http://tinyauth:3000/api/auth/traefik"
+        trustForwardHeader: true
+        authResponseHeaders:
+          - Remote-User
+          - Remote-Name
+          - Remote-Email
+          - Remote-Groups

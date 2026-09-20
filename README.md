@@ -26,7 +26,7 @@ That is the whole thing. The installer detects your user IDs, timezone, IP
 address and LAN range; installs Docker if it is missing; generates secrets and
 a TLS certificate; brings the stack up; and then wires the apps to each other.
 
-It asks you exactly two things: **which media server**, and — if you chose Plex
+It asks you three things: **which media server**, **how to handle logins**, and — if you chose Plex
 — your [claim token](https://plex.tv/claim). Skip even those:
 
 ```bash
@@ -59,8 +59,23 @@ Want to see what it would do first?
 | Plex _or_ Jellyfin | `https://<server>:8443/`    | Media server           |
 | Uptime Kuma        | `https://<server>:8444/`    | Uptime monitoring      |
 | Portainer          | `https://<server>/docker`   | Container GUI (opt-in) |
+| Tinyauth | `https://<server>:8445/` | Sign-in (opt-in, `--auth=sso`) |
 
 The certificate is self-signed, so your browser will warn you once.
+
+## Logins
+
+By default one account covers everything reached through the proxy — the
+dashboard, all four arr apps, qBittorrent, Portainer, and the Traefik dashboard
+(which previously had no authentication at all). Plex/Jellyfin and Uptime Kuma
+keep their own accounts; nothing can remove those.
+
+```bash
+./scripts/install.sh --auth=sso    # one login, via Tinyauth (~46 MB)
+./scripts/install.sh --auth=none   # no login on the LAN
+```
+
+Switchable later by re-running. See [docs/authentication.md](docs/authentication.md).
 
 ## The three scripts
 
@@ -109,6 +124,7 @@ on NFS.
 | [architecture.md](docs/architecture.md)       | How it fits together, and why it was built this way |
 | [configuration.md](docs/configuration.md)     | Every `.env` variable                               |
 | [media-app.md](docs/media-app.md)             | Plex vs Jellyfin, and switching                     |
+| [authentication.md](docs/authentication.md) | SSO vs none, and how to switch |
 | [monitoring.md](docs/monitoring.md)           | Uptime Kuma setup and the monitor set               |
 | [troubleshooting.md](docs/troubleshooting.md) | When something is wrong                             |
 

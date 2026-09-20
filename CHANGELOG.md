@@ -19,6 +19,14 @@ All notable changes to this project are documented here. Format follows
   switching is lossless.
 - **Uptime Kuma** on its own TLS entrypoint (`:8444`), replacing the Prometheus
   and Grafana stack.
+- **Single sign-on, or no sign-on** — `--auth=sso|none`. SSO puts one Tinyauth
+  account (~46 MB) in front of the dashboard, all four arr apps, qBittorrent,
+  Portainer and the Traefik dashboard. The arr apps are set to trust the proxy
+  and `configure.sh` tells qBittorrent to do the same, so there is no second
+  prompt behind the first. Plex/Jellyfin and Uptime Kuma keep their own accounts;
+  media clients cannot complete a browser login flow. Switchable by re-running.
+- **The Traefik dashboard is no longer unauthenticated.** It previously had no
+  access control at all, despite being able to rewrite the stack's routing.
 - **`update.sh --check` reports tag drift** against `.env.example`, with
   `--sync-tags` to adopt the recommended versions. A `git pull` cannot change an
   existing `.env`, so without this a repo-side version bump never reaches an

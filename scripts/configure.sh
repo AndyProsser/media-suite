@@ -86,6 +86,74 @@ read_qbit_password() {
   printf '%s' "$pass"
 }
 
+# ── qBittorrent access ─────────────────────────────────────────────
+# qBittorrent keeps its own login even behind the proxy, which would
+# mean a second prompt after signing in. Trusting the Docker network
+# it is reached over removes that. Requests only arrive from Traefik —
+# the container publishes no ports — so this does not widen access
+# beyond whatever already guards the /download route.
+#
+# Driven through `docker exec` rather than the proxy, because under
+# --auth=sso the proxy route is itself behind the login.
+configure_qbittorrent_access() {
+  docker ps --format '{{.Names}}' 2>/dev/null | grep -qx qbittorrent || {
+    log_warn "qbittorrent is not running — skipping its access settings."
+    return 0
+  }
+
+  local subnet
+  subnet="$(docker network inspect traefik \
+    --format '{{range .IPAM.Config}}{{.Subnet}}{{end}}' 2>/dev/null)"
+  if [[ -z "$subnet" ]]; then
+    log_warn "Could not determine the traefik network subnet — skipping."
+    return 0
+  fi
+
+  # Already configured? Leave it alone.
+  local current
+  current="$(docker exec qbittorrent curl -s \
+    http://127.0.0.1:8080/api/v2/app/preferences 2>/dev/null \
+    | grep -o '"bypass_auth_subnet_whitelist_enabled":[a-z]*' || true)"
+  if [[ "$current" == *true ]]; then
+    log_skip "qbittorrent: already trusts the proxy network"
+    return 0
+  fi
+
+  if [[ -z "${QBIT_PASS:-}" ]]; then
+    log_warn "qbittorrent: no password available, cannot change its settings."
+    log_info "Set 'Bypass authentication for clients in whitelisted IP subnets'"
+    log_info "to ${subnet} under Tools > Options > Web UI, to avoid a second login."
+    return 0
+  fi
+
+  if (( DRY_RUN )); then
+    log_dry "qbittorrent: would trust ${subnet}, removing its separate login"
+    return 0
+  fi
+
+  local out
+  out="$(docker exec qbittorrent sh -c "
+    curl -s -c /tmp/qb.ck -o /dev/null -w '%{http_code}' \
+      --data-urlencode 'username=${QBIT_USER}' \
+      --data-urlencode 'password=${QBIT_PASS}' \
+      -H 'Referer: http://127.0.0.1:8080' \
+      http://127.0.0.1:8080/api/v2/auth/login
+    printf ' '
+    curl -s -b /tmp/qb.ck -o /dev/null -w '%{http_code}' \
+      -H 'Referer: http://127.0.0.1:8080' \
+      --data-urlencode 'json={\"bypass_auth_subnet_whitelist_enabled\":true,\"bypass_auth_subnet_whitelist\":\"${subnet}\",\"bypass_local_auth\":true}' \
+      http://127.0.0.1:8080/api/v2/app/setPreferences
+    rm -f /tmp/qb.ck
+  " 2>/dev/null)" || true
+
+  if [[ "$out" == "204 200" ]]; then
+    log_success "qbittorrent: trusts ${subnet} — no second login behind the proxy"
+  else
+    log_warn "qbittorrent: could not update settings (login/set returned '${out}')."
+    log_info "Set the subnet whitelist to ${subnet} by hand if you get a second login."
+  fi
+}
+
 main() {
   require_env_file
   require_cmd docker
@@ -136,6 +204,9 @@ main() {
 
   log_step "Applying configuration via ${GATEWAY}"
   python3 "${REPO_ROOT}/scripts/lib/arr_api.py"
+
+  log_step "qBittorrent access"
+  configure_qbittorrent_access
 }
 
 main "$@"
