@@ -1,7 +1,8 @@
 # Design: Install Modernisation & Media App Choice
 
 - **Date:** 2026-09-20
-- **Status:** Approved (design), pending spec review
+- **Status:** Approved; revised 2026-09-20 — Prometheus/Grafana and Readarr dropped,
+  Uptime Kuma added, install automation maximised
 - **Scope:** Replace the manual README runbook with idempotent install/update/remove
   scripts, add a Plex-or-Jellyfin choice, fix known compose defects, and bring the
   repo up to standard tooling conventions.
@@ -44,6 +45,10 @@ during review (Section 6).
 - Let's Encrypt / ACME automation. Self-signed stays the default; the `acme` mount
   remains for operators who wire it up themselves.
 - VPN, remote access, or reverse-proxy-to-the-internet concerns.
+- Metrics, dashboards, or time-series storage. Uptime Kuma answers "is it up?"; any
+  deeper observability is out of scope for a homelab media box.
+- Indexer configuration. Which trackers to use and their credentials stay with the
+  operator.
 - Migrating existing installs. Scripts are written to be idempotent and safe to run
   against an existing deployment, but no data migration is attempted.
 
@@ -54,9 +59,9 @@ of truth for all state. `docker compose -p media-suite` supplies the rest.
 
 **Rejected alternatives:**
 
-- *Separate installer state file.* `docker compose down` already knows what it
+- _Separate installer state file._ `docker compose down` already knows what it
   created; a second manifest is bookkeeping that can only drift.
-- *A TypeScript CLI.* Bootstrap tooling that needs Node installed before it can
+- _A TypeScript CLI._ Bootstrap tooling that needs Node installed before it can
   install Docker is the wrong shape. Install must run on a bare Ubuntu box with
   nothing but coreutils, `openssl`, and `curl`.
 
@@ -73,11 +78,9 @@ media-suite/
 │   └── settings.json
 ├── assets/                     # screenshots (unchanged)
 ├── compose/
-│   ├── compose.yml             # core stack + plex/jellyfin profiles
-│   ├── compose.portainer.yml   # opt-in
-│   └── compose.monitoring.yml  # opt-in, repaired
+│   ├── compose.yml             # core + plex/jellyfin/monitoring profiles
+│   └── compose.portainer.yml   # opt-in
 ├── config/
-│   ├── prometheus/prometheus.yml
 │   └── traefik/
 │       ├── certificates.yml    # copied into place, never echoed
 │       └── dynamic/portainer.yml
@@ -91,6 +94,7 @@ media-suite/
 │   ├── install.sh
 │   ├── update.sh
 │   ├── remove.sh
+│   ├── configure.sh            # post-install arr cross-wiring
 │   └── lib/common.sh
 ├── .editorconfig
 ├── .env.example
@@ -106,28 +110,31 @@ their content moves into the structure above.
 
 ## 6. Defects Fixed
 
-| # | File | Defect | Fix |
-|---|------|--------|-----|
-| 1 | `media-suite-compose.yml` | Plex reads `${PLEX_NO_AUTH_NETWORKS}`, which is not defined anywhere. Env defines `LAN_NETWORK` instead. Resolves empty. | Compose sets `PLEX_NO_AUTH_NETWORKS=${LAN_NETWORK}`; `LAN_NETWORK` stays the single operator-facing variable. |
-| 2 | `media-suite-compose.yml` | `PLEX_BETA_INSTALL=false` hardcoded, overriding the env value. | Reads `${PLEX_BETA_INSTALL}`. |
-| 3 | `docker-route.yml` | `regex: "^(.*)/docker$$"` — `$$` is Compose *label* escaping, invalid in a Traefik file-provider YAML. | Single `$`. |
-| 4 | `media-suite-compose.yml` | qBittorrent middleware chain `qb-strip,qb-redirect,qb-headers`: strip runs first, so the redirect can never match. | Reordered to `qb-redirect,qb-strip,qb-headers`. |
-| 5 | `monitoring-compose.yml` | No `traefik.enable=true` on either service while Traefik runs `exposedbydefault=false` — neither would ever route. References an undefined `traefik-auth` middleware and a `monitoring.env` that is not in the repo. | Labels added; a real basic-auth middleware defined; monitoring vars folded into the single `.env`. |
-| 6 | `media-suite-compose.yml` | `--api.insecure=true` plus a published `:8080` exposes the Traefik API unauthenticated on the LAN. | Both removed. Dashboard stays on `/admin` behind TLS. `--ping=true` added for healthchecks. |
-| 7 | `media-suite.env` | `DOMAIN_NAME`, `QBITTORRENT_ENABLE_PRIVOXY`, `QBITTORRENT_WEBUI_PORT` defined but never referenced. `PGID=990` contradicts the README's derivation snippet. | Dead vars removed; `DOMAIN_NAME` wired to cert generation; PUID/PGID derived by `install.sh`. |
+| #   | File                      | Defect                                                                                                                                                                                                               | Fix                                                                                                           |
+| --- | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| 1   | `media-suite-compose.yml` | Plex reads `${PLEX_NO_AUTH_NETWORKS}`, which is not defined anywhere. Env defines `LAN_NETWORK` instead. Resolves empty.                                                                                             | Compose sets `PLEX_NO_AUTH_NETWORKS=${LAN_NETWORK}`; `LAN_NETWORK` stays the single operator-facing variable. |
+| 2   | `media-suite-compose.yml` | `PLEX_BETA_INSTALL=false` hardcoded, overriding the env value.                                                                                                                                                       | Reads `${PLEX_BETA_INSTALL}`.                                                                                 |
+| 3   | `docker-route.yml`        | `regex: "^(.*)/docker$$"` — `$$` is Compose _label_ escaping, invalid in a Traefik file-provider YAML.                                                                                                               | Single `$`.                                                                                                   |
+| 4   | `media-suite-compose.yml` | qBittorrent middleware chain `qb-strip,qb-redirect,qb-headers`: strip runs first, so the redirect can never match.                                                                                                   | Reordered to `qb-redirect,qb-strip,qb-headers`.                                                               |
+| 5 | `monitoring-compose.yml` | No `traefik.enable=true` on either service while Traefik runs `exposedbydefault=false` — neither would ever route. Undefined `traefik-auth` middleware, missing `monitoring.env`, missing `prometheus.yml`, and a Grafana config that disables admin creation without configuring any alternative auth (unloggable). | **File deleted.** Prometheus and Grafana removed entirely — metrics plumbing costs more than it returns at this scale. Replaced by Uptime Kuma (Section 9a). |
+| 6   | `media-suite-compose.yml` | `--api.insecure=true` plus a published `:8080` exposes the Traefik API unauthenticated on the LAN.                                                                                                                   | Both removed. Dashboard stays on `/admin` behind TLS. `--ping=true` added for healthchecks.                   |
+| 7   | `media-suite.env`         | `DOMAIN_NAME`, `QBITTORRENT_ENABLE_PRIVOXY`, `QBITTORRENT_WEBUI_PORT` defined but never referenced. `PGID=990` contradicts the README's derivation snippet.                                                          | Dead vars removed; `DOMAIN_NAME` wired to cert generation; PUID/PGID derived by `install.sh`.                 |
 
 **Additional repairs:**
 
-- `monitoring-compose.yml` sets `GF_SECURITY_DISABLE_INITIAL_ADMIN_CREATION: "true"`
-  with no alternative auth configured — Grafana would be unloggable. Removed.
-- Prometheus mounts `/etc/prometheus` but the repo ships no `prometheus.yml`. A scrape
-  config targeting Traefik's metrics endpoint is added at `config/prometheus/`.
 - The `traefik_internal` network is declared and attached to the proxy but joined by
   nothing. Removed.
-- `readarr` runs `ghcr.io/pennydreadful/bookshelf` (Readarr is EOL). Service renamed
-  `bookshelf` to match reality; route stays `/books`.
 - No healthchecks anywhere; `depends_on` has no conditions, so arr apps start before
   Traefik is ready. Healthchecks added (Section 9).
+- Traefik's Prometheus metrics flags go away with Prometheus itself.
+
+**Removals requested after design approval:**
+
+- **Prometheus and Grafana** — deleted, not repaired. See Section 9a for the
+  replacement.
+- **Readarr / `bookshelf`** — the service, its `/books` route, and its `books` media
+  and torrent directories are removed. Readarr is EOL and the replacement fork is not
+  wanted here.
 
 ## 7. Media App Selection
 
@@ -153,14 +160,14 @@ implicitly — no `-f` chains to keep in sync.
 
 **Differences handled:**
 
-| | Plex | Jellyfin |
-|---|---|---|
-| Claim token | Prompted at install, 4-minute validity | Not applicable — prompt skipped |
-| Advertise URL | `PLEX_ADVERTISE_URL` | `JELLYFIN_PublishedServerUrl` |
-| Internal port | 32400 | 8096 |
-| Published port | 32400/tcp | 8096/tcp, 7359/udp (discovery) |
-| Traefik router | `websecure-alt` (:8443), `HostRegexp(.*)` | identical pattern |
-| Config path | `${DOCKERCONFDIR}/plex/{config,transcode}` | `${DOCKERCONFDIR}/jellyfin/{config,cache}` |
+|                | Plex                                       | Jellyfin                                   |
+| -------------- | ------------------------------------------ | ------------------------------------------ |
+| Claim token    | Prompted at install, 4-minute validity     | Not applicable — prompt skipped            |
+| Advertise URL  | `PLEX_ADVERTISE_URL`                       | `JELLYFIN_PublishedServerUrl`              |
+| Internal port  | 32400                                      | 8096                                       |
+| Published port | 32400/tcp                                  | 8096/tcp, 7359/udp (discovery)             |
+| Traefik router | `websecure-alt` (:8443), `HostRegexp(.*)`  | identical pattern                          |
+| Config path    | `${DOCKERCONFDIR}/plex/{config,transcode}` | `${DOCKERCONFDIR}/jellyfin/{config,cache}` |
 
 Switching after install: edit `COMPOSE_PROFILES` in `.env`, run `./scripts/update.sh`.
 Compose stops the deselected service and starts the other. Both config directories
@@ -190,7 +197,7 @@ Shared, sourced by all three. Provides:
 - `have_cmd` / `require_cmd`.
 - `env_get KEY` / `env_set KEY VALUE` — idempotent in-place `.env` editing.
 - `compose ARGS...` — wraps `docker compose --project-name "$COMPOSE_PROJECT_NAME"
-  --env-file "$ENV_FILE" -f compose/compose.yml [optional -f overlays]`.
+--env-file "$ENV_FILE" -f compose/compose.yml [optional -f overlays]`.
 - `repo_root` — resolves the repo root from `$BASH_SOURCE` so scripts work from any cwd.
 
 ### 8.2 `install.sh`
@@ -207,21 +214,18 @@ already done before acting.
    `docker` group and note that a re-login is required.
 3. **`create_directories`** — build the appdata, media and Traefik trees from the
    configured paths; `chown` to `PUID:PGID`.
-4. **`configure_env`** — copy `.env.example` to `.env` if absent, then prompt for:
-   media app, timezone, domain/CN, LAN CIDR, server IP, config and data paths, with
-   PUID/PGID auto-derived as defaults. Existing values are offered as defaults on
-   re-run. Under `--non-interactive`, flags and existing values supply everything and
-   a missing required value is a hard error.
-5. **`generate_secrets`** — `SECRET_ENCRYPTION_KEY` via `openssl rand -hex 32`, and
-   the monitoring basic-auth credential via `openssl passwd -apr1`. **Written directly
-   into `.env` by redirection; never echoed to stdout, a log, or a command line.**
-   Skipped if a value is already present. Note that Traefik's `basicauth.users` label
-   requires `$` doubled to `$$` when the value is consumed through a Compose label, so
-   the hash is stored raw in `.env` and the doubling is applied in the Compose file —
-   not baked into the stored value, which would break a direct file-provider use.
+4. **`configure_env`** — copy `.env.example` to `.env` if absent, then fill it by
+   **detection rather than interrogation** (Section 8.5). The operator is shown the
+   detected values as a single confirmable block and can accept all of them with one
+   keypress. Existing `.env` values always win over detection on re-run. Under
+   `--non-interactive`, detection plus flags supply everything and a missing required
+   value is a hard error.
+5. **`generate_secrets`** — `SECRET_ENCRYPTION_KEY` via `openssl rand -hex 32`.
+   **Written directly into `.env` by redirection; never echoed to stdout, a log, or a
+   command line.** Skipped if a value is already present.
 6. **`generate_certificates`** — self-signed cert into the Traefik certificates
    directory if absent, subject built from the configured domain and locale values.
-7. **`install_traefik_config`** — *copy* `config/traefik/certificates.yml` into the
+7. **`install_traefik_config`** — _copy_ `config/traefik/certificates.yml` into the
    live Traefik config directory. When `--with-portainer` is set, also copy
    `config/traefik/dynamic/portainer.yml`, substituting `SERVER_IP` into the backend
    URL. Replaces the README's `echo -e` blocks entirely.
@@ -230,12 +234,15 @@ already done before acting.
    `-f compose.monitoring.yml` when their flags are set.
 10. **`wait_for_health`** — poll container health with a timeout; report which
     services came up and which did not.
-11. **`print_summary`** — the access URL table, and any follow-up the operator must do
-    (re-login for docker group, qBittorrent's generated password location).
+11. **`configure_apps`** — unless `--skip-configure`, run `scripts/configure.sh` to
+    cross-wire the arr stack (Section 8.5).
+12. **`print_summary`** — the access URL table, the Uptime Kuma monitor set to add,
+    and any follow-up the operator must do (re-login for the docker group, where to
+    find qBittorrent's generated password).
 
 **Flags:** `--media-app=plex|jellyfin`, `--non-interactive`, `--with-portainer`,
-`--with-monitoring`, `--data-dir=PATH`, `--config-dir=PATH`, `--skip-docker-install`,
-`--dry-run`, `--verbose`, `--help`.
+`--no-monitoring`, `--data-dir=PATH`, `--config-dir=PATH`, `--skip-docker-install`,
+`--skip-configure`, `--dry-run`, `--verbose`, `--help`.
 
 ### 8.3 `update.sh`
 
@@ -264,6 +271,52 @@ Every destructive path prints exactly what will be deleted and requires confirma
 unless `--non-interactive` is given. `--purge-media` is never implied and always
 requires its own flag, even non-interactively.
 
+
+### 8.5 Automation Scope
+
+The target is a working stack from `./scripts/install.sh` with **no arguments and at
+most two answers**. Everything below is derived, not asked.
+
+**Detected from the host:**
+
+| Value | Source |
+|---|---|
+| `PUID` / `PGID` | `id -u` / `id -g` of the invoking user |
+| `TZ` | `timedatectl show -p Timezone --value`, falling back to `/etc/timezone` |
+| `SERVER_IP` | the address on the interface holding the default route |
+| `LAN_NETWORK` | that interface's address and prefix, normalised to network/CIDR |
+| `DOMAIN_NAME` | the host's FQDN, falling back to `hostname` |
+| Data/config paths | the spec defaults, overridable by flag |
+
+**Generated, never asked for:** `SECRET_ENCRYPTION_KEY`, the TLS keypair, and the
+Docker network.
+
+**The only genuine questions:** which media app, and — for Plex only — the claim
+token, which cannot be derived because it is minted by a human logging into plex.tv
+and expires in four minutes. Both are also settable by flag, so
+`--media-app=jellyfin --non-interactive` is a fully unattended install.
+
+**`configure.sh` — post-install cross-wiring.** The step that actually costs an
+evening is not installing containers, it is wiring them to each other. This script
+does it over the arr REST APIs once the containers are healthy:
+
+1. Read each app's API key from `${DOCKERCONFDIR}/<app>/config.xml` (written on first
+   start).
+2. Read qBittorrent's generated password from its container log.
+3. Register qBittorrent as a download client in Radarr, Sonarr and Lidarr, with the
+   correct category per app.
+4. Register Radarr, Sonarr and Lidarr as applications in Prowlarr, so indexers sync
+   outward automatically.
+5. Set each app's root folder to its `/data/media/<type>` path.
+
+Every step is idempotent — it queries for an existing entry by name before creating
+one — so the script is safe to re-run, and safe to run against a stack the operator
+has already partly configured by hand. It is also runnable standalone, and exposed as
+`install.sh --skip-configure` for operators who want to do it themselves.
+
+Indexers themselves are deliberately not automated: which trackers an operator uses,
+and their credentials, are not something this repo should be guessing at.
+
 ## 9. Compose Changes
 
 **Image tags.** Watchtower is removed. Every image takes an explicit tag from `.env`
@@ -274,28 +327,62 @@ reproducible install, a rollback path, and no silent 3 a.m. Plex upgrades;
 **Healthchecks.** Added to every service, with `depends_on: { proxy: { condition:
 service_healthy } }` on the routed services. Traefik uses `traefik healthcheck --ping`
 (requires the new `--ping=true`); arr apps use their `/ping` endpoint under the
-configured URL base; Plex uses `/identity`; Jellyfin uses `/health`. Exact commands are
-verified against each image during implementation — probe binaries differ between bases.
+configured URL base; Plex uses `/identity`; Jellyfin uses `/health`; Uptime Kuma uses
+its bundled `extra/healthcheck` probe. Exact commands are verified against each image
+during implementation — probe binaries differ between bases.
 
 **Routing table.**
 
-| Service | Route | Entrypoint |
-|---|---|---|
-| Homarr | `/` | websecure :443 |
-| Traefik dashboard | `/admin` | websecure |
-| Radarr | `/movies` | websecure |
-| Sonarr | `/tv` | websecure |
-| Lidarr | `/music` | websecure |
-| Bookshelf | `/books` | websecure |
-| Prowlarr | `/idx` | websecure |
-| qBittorrent | `/download` | websecure |
-| Portainer | `/docker` | websecure (file provider) |
-| Grafana | `/grafana` | websecure + basic auth |
-| Prometheus | `/prometheus` | websecure + basic auth |
-| Plex *or* Jellyfin | `/` | websecure-alt :8443 |
+| Service            | Route         | Entrypoint                |
+| ------------------ | ------------- | ------------------------- |
+| Homarr             | `/`           | websecure :443            |
+| Traefik dashboard  | `/admin`      | websecure                 |
+| Radarr             | `/movies`     | websecure                 |
+| Sonarr             | `/tv`         | websecure                 |
+| Lidarr             | `/music`      | websecure                 |
+| Prowlarr           | `/idx`        | websecure                 |
+| qBittorrent        | `/download`   | websecure                 |
+| Portainer          | `/docker`     | websecure (file provider) |
+| Uptime Kuma | `/` | websecure-kuma :8444 |
+| Plex _or_ Jellyfin | `/`           | websecure-alt :8443       |
 
-Grafana gets `GF_SERVER_ROOT_URL` and `GF_SERVER_SERVE_FROM_SUB_PATH=true`; Prometheus
-gets `--web.external-url` and `--web.route-prefix` so both work under a path prefix.
+Services holding a path prefix have their URL base configured to match
+(`RADARR__SERVER__URLBASE=/movies` and friends) so generated links stay correct behind
+the proxy.
+
+
+## 9a. Uptime Monitoring — Uptime Kuma
+
+Prometheus and Grafana are replaced by a single Uptime Kuma container. The old stack
+was two services, a scrape config, a dashboard provisioning tree, and a basic-auth
+middleware — all to answer "is anything down?" on a box with a dozen containers.
+Uptime Kuma answers that directly, in roughly 100 MB of RAM, with notifications built
+in and no query language to learn.
+
+- **Image:** `louislam/uptime-kuma:${UPTIME_KUMA_TAG}`, pinned to `2` (2.x is GA;
+  current release 2.5.5).
+- **Profile:** `monitoring`, enabled by default in the generated
+  `COMPOSE_PROFILES`. Opting out is removing one word from `.env`.
+- **Storage:** SQLite at `/app/data`, bound to `${DOCKERCONFDIR}/uptime-kuma`. This is
+  a database, so it falls squarely under the block-storage rule in Section 11.
+- **Docker integration:** `/var/run/docker.sock` mounted read-only so container-level
+  monitors work alongside HTTP ones.
+
+**Routing.** Uptime Kuma has no subpath support — `UPTIME_KUMA_BASE_PATH` exists only
+in closed pull requests and appears nowhere in the 2.5.5 source, so it cannot be served
+from `/uptime`. It gets its own TLS entrypoint on `:8444`, exactly the pattern Plex
+already uses on `:8443`.
+
+This settles a convention worth stating plainly: **apps that must own their root path
+get a dedicated TLS entrypoint; everything else gets a path prefix on `:443`.** Homarr
+holds `/` on 443, the media app holds `/` on 8443, Uptime Kuma holds `/` on 8444.
+
+**Seeding.** Uptime Kuma 2.x removed the JSON backup/restore feature, and its only
+programmatic interface is Socket.io — too heavy a dependency for a bash installer, and
+writing to its SQLite file before first boot is too fragile to ship. Monitors are
+therefore not auto-created. Instead `install.sh` prints, and `docs/monitoring.md`
+records, the exact monitor set for the deployed profile (URL, expected status, suggested
+interval) so setup is transcription rather than design.
 
 ## 10. Repository Standards
 
@@ -310,8 +397,8 @@ gets `--web.external-url` and `--web.route-prefix` so both work under a path pre
 - **`.vscode/settings.json`** — Compose schema binding for `compose/compose*.yml`,
   format-on-save, `shellcheck.customArgs: ["-x"]` (scripts source `lib/common.sh`),
   `shellformat.flag: "-i 2 -ci"`, `.remember` hidden, and a homelab dictionary so
-  *Traefik*, *Sonarr*, *Prowlarr*, *Jellyfin*, *Homarr*, *qBittorrent*, *servarr* and
-  *TRaSH* stop being underlined.
+  _Traefik_, _Sonarr_, _Prowlarr_, _Jellyfin_, _Homarr_, _qBittorrent_, _servarr_ and
+  _TRaSH_ stop being underlined.
 - **`.github/workflows/lint.yml`** — on push and PR: `shellcheck -x` over `scripts/`,
   `docker compose config -q` against both media profiles and both optional overlays,
   and `markdownlint-cli2` over `*.md`.
@@ -350,6 +437,9 @@ which profile needs it.
 
 **`docs/media-app.md`** — Plex versus Jellyfin comparison and the switching procedure.
 
+**`docs/monitoring.md`** — what Uptime Kuma is doing here, the monitor set to create
+for the deployed profile, and how to wire up notifications.
+
 **`docs/troubleshooting.md`** — the self-signed certificate warning, finding
 qBittorrent's generated password, the docker-group re-login, port conflicts, and
 where each service writes its logs.
@@ -357,14 +447,17 @@ where each service writes its logs.
 ## 13. Verification
 
 - `shellcheck -x scripts/*.sh scripts/lib/*.sh` clean.
-- `docker compose config -q` succeeds for `plex`, `jellyfin`, and both optional
-  overlays.
+- `docker compose config -q` succeeds for `plex`, `jellyfin`, `monitoring`, and the
+  Portainer overlay.
 - `./scripts/install.sh --dry-run` for each media app prints a complete, coherent plan
   and touches nothing.
 - `markdownlint-cli2` clean.
 - `git status` after a dry-run install shows no `.env` and no certificate material.
+- `./scripts/configure.sh --dry-run` reports the wiring it would create without
+  touching any app.
 - A real install on a disposable Ubuntu target: install → verify each route responds →
-  `update.sh --check` → `remove.sh` → confirm media survives.
+  `configure.sh` → confirm Prowlarr sees all three arr apps and each has qBittorrent as
+  a download client → `update.sh --check` → `remove.sh` → confirm media survives.
 
 ## 14. Open Decisions
 
