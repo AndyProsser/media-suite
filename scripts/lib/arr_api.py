@@ -37,6 +37,8 @@ ARR_APPS = {
         "category_field": "movieCategory",
         "category": "radarr",
         "root_folder": "/data/media/movies",
+        "root_folder_name": "Movies",
+        "root_folder_needs_profiles": False,
         "config_contract": "RadarrSettings",
     },
     "sonarr": {
@@ -47,6 +49,8 @@ ARR_APPS = {
         "category_field": "tvCategory",
         "category": "sonarr",
         "root_folder": "/data/media/tv",
+        "root_folder_name": "TV",
+        "root_folder_needs_profiles": False,
         "config_contract": "SonarrSettings",
     },
     "lidarr": {
@@ -57,6 +61,11 @@ ARR_APPS = {
         "category_field": "musicCategory",
         "category": "lidarr",
         "root_folder": "/data/media/music",
+        "root_folder_name": "Music",
+        # Lidarr's v1 root folder resource is richer than Radarr's and
+        # Sonarr's v3: it rejects a bare path, demanding a name plus
+        # default quality and metadata profile IDs.
+        "root_folder_needs_profiles": True,
         "config_contract": "LidarrSettings",
     },
 }
@@ -78,27 +87,51 @@ failed = 0
 # ── Output ─────────────────────────────────────────────────────────
 
 def ok(msg: str) -> None:
-    print(f"    \033[32m✓\033[0m {msg}")
+    print(f"    \033[32m✓\033[0m {msg}", flush=True)
 
 
 def skip(msg: str) -> None:
-    print(f"    \033[2m·\033[0m {msg} \033[2m(already configured)\033[0m")
+    print(f"    \033[2m·\033[0m {msg} \033[2m(already configured)\033[0m", flush=True)
 
 
 def warn(msg: str) -> None:
-    print(f"    \033[33m!\033[0m {msg}", file=sys.stderr)
+    sys.stdout.flush()
+    print(f"    \033[33m!\033[0m {msg}", file=sys.stderr, flush=True)
 
 
 def dry(msg: str) -> None:
-    print(f"    \033[36m[dry-run]\033[0m {msg}")
+    print(f"    \033[36m[dry-run]\033[0m {msg}", flush=True)
 
 
 def debug(msg: str) -> None:
     if VERBOSE:
-        print(f"    \033[2m  {msg}\033[0m")
+        print(f"    \033[2m  {msg}\033[0m", flush=True)
 
 
 # ── HTTP ───────────────────────────────────────────────────────────
+
+def _describe_error(body: str) -> str:
+    """Turn an arr validation response into one readable line.
+
+    These APIs answer a bad POST with a JSON array of field errors.
+    Dumping it raw buries the useful part in escaped punctuation.
+    """
+    try:
+        data = json.loads(body)
+    except ValueError:
+        return body.strip()[:300] or "(no detail)"
+    if isinstance(data, list):
+        parts = []
+        for item in data:
+            if isinstance(item, dict):
+                field = item.get("propertyName") or "?"
+                msg = item.get("errorMessage") or "?"
+                parts.append(f"{field}: {msg}")
+        return "; ".join(parts) or str(data)[:300]
+    if isinstance(data, dict):
+        return str(data.get("message") or data.get("error") or data)[:300]
+    return str(data)[:300]
+
 
 def api(app_base: str, api_ver: str, key: str, path: str,
         method: str = "GET", payload: dict | None = None):
@@ -119,8 +152,8 @@ def api(app_base: str, api_ver: str, key: str, path: str,
     except urllib.error.HTTPError as exc:
         if exc.code == 404:
             return None
-        detail = exc.read().decode("utf-8", "replace")[:400]
-        raise RuntimeError(f"{method} {url} → HTTP {exc.code}: {detail}") from exc
+        detail = _describe_error(exc.read().decode("utf-8", "replace"))
+        raise RuntimeError(f"HTTP {exc.code} from {path} — {detail}") from exc
     except urllib.error.URLError as exc:
         raise RuntimeError(f"{method} {url} → unreachable: {exc.reason}") from exc
 
@@ -184,6 +217,23 @@ def ensure_download_client(name: str, cfg: dict, key: str,
         failed += 1
 
 
+def pick_profile(cfg: dict, key: str, endpoint: str,
+                 prefer: str | None = None) -> int | None:
+    """Return a profile id, preferring one by name, else the first."""
+    try:
+        items = api(cfg["base"], cfg["api"], key, endpoint) or []
+    except RuntimeError as exc:
+        debug(f"{endpoint}: {exc}")
+        return None
+    if not items:
+        return None
+    if prefer:
+        for item in items:
+            if str(item.get("name", "")).lower() == prefer.lower():
+                return item["id"]
+    return items[0]["id"]
+
+
 def ensure_root_folder(name: str, cfg: dict, key: str) -> None:
     """Point the app at its media directory."""
     global changed, failed
@@ -194,12 +244,30 @@ def ensure_root_folder(name: str, cfg: dict, key: str) -> None:
         skip(f"{label}: root folder {path}")
         return
 
+    payload: dict = {"path": path}
+    if cfg.get("root_folder_needs_profiles"):
+        quality = pick_profile(cfg, key, "qualityprofile", prefer="Standard")
+        metadata = pick_profile(cfg, key, "metadataprofile", prefer="Standard")
+        if quality is None or metadata is None:
+            warn(f"{label}: no quality/metadata profiles available yet — "
+                 "re-run configure.sh once it has finished initialising.")
+            failed += 1
+            return
+        payload.update({
+            "name": cfg["root_folder_name"],
+            "defaultQualityProfileId": quality,
+            "defaultMetadataProfileId": metadata,
+            "defaultMonitorOption": "all",
+            "defaultNewItemMonitorOption": "all",
+            "defaultTags": [],
+        })
+
     if DRY_RUN:
         dry(f"{label}: would set root folder to {path}")
         return
 
     try:
-        api(cfg["base"], cfg["api"], key, "rootfolder", "POST", {"path": path})
+        api(cfg["base"], cfg["api"], key, "rootfolder", "POST", payload)
         ok(f"{label}: root folder set to {path}")
         changed += 1
     except RuntimeError as exc:
@@ -265,7 +333,7 @@ def main() -> int:
         warn("No qBittorrent password available — download clients will be "
              "added without one and will need the password set by hand.")
 
-    print("\n  Download clients and root folders")
+    print("\n  Download clients and root folders", flush=True)
     for name, key in available.items():
         cfg = ARR_APPS[name]
         if not reachable(cfg["base"], cfg["api"], key):
@@ -275,7 +343,7 @@ def main() -> int:
         ensure_root_folder(name, cfg, key)
 
     if prowlarr_key:
-        print("\n  Prowlarr indexer sync")
+        print("\n  Prowlarr indexer sync", flush=True)
         if reachable(PROWLARR["base"], PROWLARR["api"], prowlarr_key):
             for name, key in available.items():
                 ensure_prowlarr_app(name, ARR_APPS[name], key, prowlarr_key)

@@ -44,6 +44,14 @@ All notable changes to this project are documented here. Format follows
   applies group membership only to new login sessions. It now verifies Docker
   is actually reachable, and if not, stops with exit code 2 and an explanation
   rather than failing mid-deploy. Re-running after a re-login resumes cleanly.
+- **Lidarr's root folder was never created.** `configure.sh` posted a bare
+  `{"path": ...}`, which Radarr and Sonarr accept but Lidarr's v1 API rejects —
+  it also requires a name and default quality and metadata profile IDs. The
+  payload is now built per application, looking up Lidarr's available profiles
+  and preferring one named "Standard".
+- **Arr validation errors are now one readable line.** A rejected POST returns a
+  JSON array of field errors; dumping it raw buried the useful part in escaped
+  punctuation.
 - **Homarr 404'd from behind the proxy.** Its healthcheck probed `localhost`,
   which resolves to `::1` first in these images while the app listens on IPv4
   only. `curl` falls back to IPv4 silently, busybox `wget` does not — and the

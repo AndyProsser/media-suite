@@ -163,6 +163,20 @@ Note that `configure.sh` connects Prowlarr to the apps but deliberately does not
 add indexers. You add those yourself in Prowlarr; they then sync outward
 automatically.
 
+## configure.sh reported a failure
+
+It is safe to re-run — every entry is looked up by name before being created, so
+a second run only fills in what is missing:
+
+```bash
+./scripts/configure.sh --dry-run   # what is still outstanding
+./scripts/configure.sh
+```
+
+The usual cause is timing: the arr apps validate a download client by actually
+connecting to it, so if qBittorrent was not ready the registration is rejected.
+Waiting a minute and re-running fixes it.
+
 ## Plex says the server is unclaimed
 
 Claim tokens expire four minutes after you generate them, so a slow install can
