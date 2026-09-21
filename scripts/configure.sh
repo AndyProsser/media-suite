@@ -31,6 +31,9 @@ Wires the arr applications together after install:
   · registers qBittorrent as a download client in Radarr/Sonarr/Lidarr
   · registers those apps in Prowlarr so indexers sync automatically
   · sets each app's root folder under /data/media
+  · registers Byparr as Prowlarr's FlareSolverr indexer proxy
+  · sets qBittorrent's save path to /data/torrents/ and removes any
+    stale Remote Path Mapping that was worked around it instead
 
 Safe to re-run; existing configuration is never overwritten.
 
@@ -95,6 +98,27 @@ read_qbit_password() {
 #
 # Driven through `docker exec` rather than the proxy, because under
 # --auth=sso the proxy route is itself behind the login.
+
+# qbittorrent_set_preference JSON — logs in and POSTs one
+# setPreferences call. Prints the login and set HTTP status codes,
+# space-separated ("204 200" is success for both).
+qbittorrent_set_preference() {
+  local json="$1"
+  docker exec qbittorrent sh -c "
+    curl -s -c /tmp/qb.ck -o /dev/null -w '%{http_code}' \
+      --data-urlencode 'username=${QBIT_USER}' \
+      --data-urlencode 'password=${QBIT_PASS}' \
+      -H 'Referer: http://127.0.0.1:8080' \
+      http://127.0.0.1:8080/api/v2/auth/login
+    printf ' '
+    curl -s -b /tmp/qb.ck -o /dev/null -w '%{http_code}' \
+      -H 'Referer: http://127.0.0.1:8080' \
+      --data-urlencode 'json=${json}' \
+      http://127.0.0.1:8080/api/v2/app/setPreferences
+    rm -f /tmp/qb.ck
+  " 2>/dev/null
+}
+
 configure_qbittorrent_access() {
   docker ps --format '{{.Names}}' 2>/dev/null | grep -qx qbittorrent || {
     log_warn "qbittorrent is not running — skipping its access settings."
@@ -132,25 +156,61 @@ configure_qbittorrent_access() {
   fi
 
   local out
-  out="$(docker exec qbittorrent sh -c "
-    curl -s -c /tmp/qb.ck -o /dev/null -w '%{http_code}' \
-      --data-urlencode 'username=${QBIT_USER}' \
-      --data-urlencode 'password=${QBIT_PASS}' \
-      -H 'Referer: http://127.0.0.1:8080' \
-      http://127.0.0.1:8080/api/v2/auth/login
-    printf ' '
-    curl -s -b /tmp/qb.ck -o /dev/null -w '%{http_code}' \
-      -H 'Referer: http://127.0.0.1:8080' \
-      --data-urlencode 'json={\"bypass_auth_subnet_whitelist_enabled\":true,\"bypass_auth_subnet_whitelist\":\"${subnet}\",\"bypass_local_auth\":true}' \
-      http://127.0.0.1:8080/api/v2/app/setPreferences
-    rm -f /tmp/qb.ck
-  " 2>/dev/null)" || true
+  out="$(qbittorrent_set_preference \
+    "{\\\"bypass_auth_subnet_whitelist_enabled\\\":true,\\\"bypass_auth_subnet_whitelist\\\":\\\"${subnet}\\\",\\\"bypass_local_auth\\\":true}")" \
+    || true
 
   if [[ "$out" == "204 200" ]]; then
     log_success "qbittorrent: trusts ${subnet} — no second login behind the proxy"
   else
     log_warn "qbittorrent: could not update settings (login/set returned '${out}')."
     log_info "Set the subnet whitelist to ${subnet} by hand if you get a second login."
+  fi
+}
+
+# ── qBittorrent save path ──────────────────────────────────────────
+# Every *arr app and qBittorrent mount DOCKERSTORAGEDIR at the same
+# container path, /data, specifically so their paths already match —
+# see docs/architecture.md. Left at its own default, qBittorrent saves
+# somewhere the arr apps do not recognise, and the usual workaround is
+# a Remote Path Mapping in each arr app instead of fixing this. This
+# sets the one thing that actually needs fixing; arr_api.py removes any
+# stale mapping that was added as a workaround.
+configure_qbittorrent_save_path() {
+  docker ps --format '{{.Names}}' 2>/dev/null | grep -qx qbittorrent || {
+    log_warn "qbittorrent is not running — skipping its save path."
+    return 0
+  }
+
+  local current
+  current="$(docker exec qbittorrent curl -s \
+    http://127.0.0.1:8080/api/v2/app/preferences 2>/dev/null \
+    | grep -o '"save_path":"[^"]*"' || true)"
+  if [[ "$current" == '"save_path":"/data/torrents/"' ]]; then
+    log_skip "qbittorrent: save path already /data/torrents/"
+    return 0
+  fi
+
+  if [[ -z "${QBIT_PASS:-}" ]]; then
+    log_warn "qbittorrent: no password available, cannot set its save path."
+    log_info "Set 'Default Save Path' to /data/torrents/ under Tools > Options >"
+    log_info "Downloads by hand, and remove any Remote Path Mapping in the arr apps."
+    return 0
+  fi
+
+  if (( DRY_RUN )); then
+    log_dry "qbittorrent: would set Default Save Path to /data/torrents/"
+    return 0
+  fi
+
+  local out
+  out="$(qbittorrent_set_preference '{\"save_path\":\"/data/torrents/\"}')" || true
+
+  if [[ "$out" == "204 200" ]]; then
+    log_success "qbittorrent: Default Save Path set to /data/torrents/"
+  else
+    log_warn "qbittorrent: could not set save path (login/set returned '${out}')."
+    log_info "Set it by hand under Tools > Options > Downloads if this recurs."
   fi
 }
 
@@ -207,6 +267,7 @@ main() {
 
   log_step "qBittorrent access"
   configure_qbittorrent_access
+  configure_qbittorrent_save_path
 }
 
 main "$@"

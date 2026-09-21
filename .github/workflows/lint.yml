@@ -57,7 +57,7 @@ jobs:
       - name: Build a throwaway .env
         run: |
           cp .env.example .env
-          sed -i "s/^COMPOSE_PROFILES=.*/COMPOSE_PROFILES=${{ matrix.profile }},monitoring/" .env
+          sed -i "s/^COMPOSE_PROFILES=.*/COMPOSE_PROFILES=${{ matrix.profile }}/" .env
           sed -i "s/^SECRET_ENCRYPTION_KEY=.*/SECRET_ENCRYPTION_KEY=$(openssl rand -hex 32)/" .env
 
       - name: Validate (${{ matrix.profile }})

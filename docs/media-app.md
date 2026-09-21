@@ -34,8 +34,8 @@ switching is a configuration change rather than a reinstall.
 Edit `COMPOSE_PROFILES` in `.env`:
 
 ```diff
--COMPOSE_PROFILES=plex,monitoring
-+COMPOSE_PROFILES=jellyfin,monitoring
+-COMPOSE_PROFILES=plex
++COMPOSE_PROFILES=jellyfin
 ```
 
 Then apply it:
@@ -83,7 +83,7 @@ after four minutes — and put it in `.env` as `PLEX_CLAIM_TOKEN` before running
 
 ## Running both at once
 
-Technically possible — `COMPOSE_PROFILES=plex,jellyfin,monitoring` — but not
+Technically possible — `COMPOSE_PROFILES=plex,jellyfin` — but not
 supported by the installer and not recommended. Two servers scanning and
 transcoding the same library doubles the I/O for no benefit, and they will
 compete for the same hardware transcoding device.

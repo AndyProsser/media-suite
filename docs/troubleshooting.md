@@ -39,6 +39,30 @@ Set a permanent one in **Tools → Options → Web UI**. If you have already cha
 it, `configure.sh` cannot recover it — set it by hand in each \*arr app's
 download client settings.
 
+## A Remote Path Mapping exists for qBittorrent (or you're tempted to add one)
+
+You shouldn't need one. Every \*arr app and qBittorrent mount `DOCKERSTORAGEDIR`
+at the same container path, `/data` — see
+[architecture.md](architecture.md#one-filesystem-for-media-and-downloads) — so
+their paths already match by design. A mapping here almost always means
+qBittorrent's own save path was never pointed at `/data/torrents/`, and someone
+(possibly a much earlier version of this stack, or a hand-configured instance)
+patched around it with a mapping instead.
+
+`configure.sh` fixes both automatically: it sets qBittorrent's Default Save
+Path to `/data/torrents/`, and removes any Remote Path Mapping it finds
+pointing at the `qbittorrent` host. If you are configuring an instance by
+hand instead, set the save path under **Tools → Options → Downloads** and
+delete the mapping from **Settings → Download Clients** in each `*arr` app —
+do not add one.
+
+## Prowlarr indexers fail with a Cloudflare challenge
+
+Add Byparr as an Indexer Proxy: **Settings → Indexer Proxies**, tag it onto the
+affected indexer(s). `configure.sh` registers Byparr with Prowlarr
+automatically (as a `FlareSolverr`-compatible proxy at `http://byparr:8191/`),
+so this is usually already done — check there before adding a second one.
+
 ## A service is unhealthy or restarting
 
 ```bash
@@ -72,8 +96,8 @@ Both live under `DOCKERSTORAGEDIR` by default, which is why. See
 
 ## Database corruption, or "database is locked"
 
-Almost certainly `DOCKERCONFDIR` on NFS. The \*arr apps, Homarr and Uptime Kuma
-are all SQLite-backed, and file locking over NFS is not reliable enough for
+Almost certainly `DOCKERCONFDIR` on NFS. The \*arr apps and Homarr are all
+SQLite-backed, and file locking over NFS is not reliable enough for
 concurrent writes.
 
 Move that directory to block storage — a local disk or iSCSI — and reinstall:
@@ -115,11 +139,11 @@ labels did not apply.
 ## Port already in use
 
 ```bash
-sudo ss -ltnp | grep -E ':(80|443|8443|8444)\b'
+sudo ss -ltnp | grep -E ':(80|443|8443)\b'
 ```
 
-The stack needs 80, 443, 8443 and 8444, plus 32400 for Plex or 8096 and 7359
-for Jellyfin. A distro-packaged nginx or Apache on 80 is the usual culprit.
+The stack needs 80, 443 and 8443, plus 32400 for Plex or 8096 and 7359 for
+Jellyfin. A distro-packaged nginx or Apache on 80 is the usual culprit.
 
 ## "permission denied" talking to Docker
 

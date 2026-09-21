@@ -71,6 +71,7 @@ ARR_APPS = {
 }
 
 PROWLARR = {"base": "/idx", "api": "v1", "internal": "http://prowlarr:9696/idx"}
+BYPARR = {"internal": "http://byparr:8191/"}
 
 GATEWAY = os.environ.get("GATEWAY", "https://127.0.0.1")
 DRY_RUN = os.environ.get("DRY_RUN", "0") == "1"
@@ -292,6 +293,81 @@ def ensure_root_folder(name: str, cfg: dict, key: str) -> None:
         failed += 1
 
 
+def ensure_no_remote_path_mapping(name: str, cfg: dict, key: str) -> None:
+    """Delete any stale Remote Path Mapping pointing at qBittorrent.
+
+    Every *arr app and qBittorrent mount DOCKERSTORAGEDIR at the same
+    container path, /data, specifically so their paths already match —
+    see docs/architecture.md. A mapping for qBittorrent is never
+    correct on this stack, and its presence usually means qBittorrent's
+    own save path was never pointed at /data/torrents; that is what
+    fixes it, not a mapping. See docs/troubleshooting.md.
+    """
+    global changed, failed
+    label = cfg["label"]
+
+    existing = api(cfg["base"], cfg["api"], key, "remotepathmapping") or []
+    stale = [m for m in existing if m.get("host") == "qbittorrent"]
+    if not stale:
+        skip(f"{label}: no stale qBittorrent remote path mapping")
+        return
+
+    if DRY_RUN:
+        dry(f"{label}: would delete {len(stale)} qBittorrent remote path mapping(s)")
+        return
+
+    for mapping in stale:
+        try:
+            api(cfg["base"], cfg["api"], key, f"remotepathmapping/{mapping['id']}", "DELETE")
+            ok(f"{label}: removed a stale qBittorrent remote path mapping")
+            changed += 1
+        except RuntimeError as exc:
+            warn(f"{label}: could not remove remote path mapping — {exc}")
+            failed += 1
+
+
+def ensure_byparr_proxy(prowlarr_key: str) -> None:
+    """Register Byparr with Prowlarr as its FlareSolverr-compatible indexer proxy."""
+    global changed, failed
+
+    existing = (
+        api(PROWLARR["base"], PROWLARR["api"], prowlarr_key, "indexerproxy") or []
+    )
+    if any(p.get("implementation") == "FlareSolverr" for p in existing):
+        skip("Prowlarr: Byparr indexer proxy")
+        return
+
+    if DRY_RUN:
+        dry("Prowlarr: would register Byparr as the FlareSolverr indexer proxy")
+        return
+
+    payload = {
+        "name": "Byparr",
+        "implementation": "FlareSolverr",
+        "implementationName": "FlareSolverr",
+        "configContract": "FlareSolverrSettings",
+        "tags": [],
+        "fields": [
+            {"name": "host", "value": BYPARR["internal"]},
+            {"name": "requestTimeout", "value": 60},
+        ],
+    }
+    try:
+        api(
+            PROWLARR["base"],
+            PROWLARR["api"],
+            prowlarr_key,
+            "indexerproxy",
+            "POST",
+            payload,
+        )
+        ok("Prowlarr: Byparr registered as indexer proxy")
+        changed += 1
+    except RuntimeError as exc:
+        warn(f"Prowlarr: could not register Byparr — {exc}")
+        failed += 1
+
+
 def ensure_prowlarr_app(name: str, cfg: dict, app_key: str, prowlarr_key: str) -> None:
     """Register an arr app in Prowlarr so indexers sync out to it."""
     global changed, failed
@@ -369,12 +445,14 @@ def main() -> int:
             continue
         ensure_download_client(name, cfg, key, qb_user, qb_pass)
         ensure_root_folder(name, cfg, key)
+        ensure_no_remote_path_mapping(name, cfg, key)
 
     if prowlarr_key:
         print("\n  Prowlarr indexer sync", flush=True)
         if reachable(PROWLARR["base"], PROWLARR["api"], prowlarr_key):
             for name, key in available.items():
                 ensure_prowlarr_app(name, ARR_APPS[name], key, prowlarr_key)
+            ensure_byparr_proxy(prowlarr_key)
         else:
             warn(f"Prowlarr not reachable at {GATEWAY}{PROWLARR['base']} — skipping")
     else:

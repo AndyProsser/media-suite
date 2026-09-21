@@ -7,7 +7,7 @@
 #  Routing convention (see docs/architecture.md):
 #    Apps that tolerate a subpath get a path prefix on :443.
 #    Apps that must own "/" get their own TLS entrypoint.
-#      :443  → Homarr        :8443 → Plex/Jellyfin   :8444 → Uptime Kuma
+#      :443  → Homarr        :8443 → Plex/Jellyfin
 # ===================================================================
 
 x-common-env: &common-env
@@ -80,8 +80,6 @@ services:
       - "--entrypoints.websecure.http.tls=true"
       - "--entrypoints.websecure-media.address=:8443"
       - "--entrypoints.websecure-media.http.tls=true"
-      - "--entrypoints.websecure-kuma.address=:8444"
-      - "--entrypoints.websecure-kuma.http.tls=true"
       - "--entrypoints.websecure-auth.address=:8445"
       - "--entrypoints.websecure-auth.http.tls=true"
     labels:
@@ -102,8 +100,6 @@ services:
         published: 443
       - target: 8443
         published: 8443
-      - target: 8444
-        published: 8444
       - target: 8445
         published: 8445
     environment: *common-env
@@ -351,6 +347,30 @@ services:
       start_period: 60s
 
   # ─────────────────────────────────────────────────────────────────
+  #  Byparr — Cloudflare-challenge solver for Prowlarr's indexers
+  #
+  #  A drop-in FlareSolverr-compatible API, registered with Prowlarr as
+  #  an Indexer Proxy by configure.sh. Internal only, like docker-proxy:
+  #  no traefik.enable label, so Traefik's Docker provider (which runs
+  #  with exposedbydefault=false) never routes to it, and no port is
+  #  published. Stateless — nothing here needs a volume.
+  #
+  #  shm_size matches the upstream compose example: the bundled Chromium
+  #  needs more than Docker's 64 MB default /dev/shm or it crashes.
+  # ─────────────────────────────────────────────────────────────────
+  byparr:
+    <<: *arr-service
+    container_name: byparr
+    image: ghcr.io/thephaseless/byparr:${BYPARR_TAG}
+    shm_size: 512mb
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8191/docs >/dev/null 2>&1 || wget -qO- http://127.0.0.1:8191/docs >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # ─────────────────────────────────────────────────────────────────
   #  qBittorrent — download client
   # ─────────────────────────────────────────────────────────────────
   qbittorrent:
@@ -466,40 +486,6 @@ services:
       start_period: 120s
 
   # ─────────────────────────────────────────────────────────────────
-  #  Uptime Kuma — profile: monitoring. Holds "/" on :8444
-  #
-  #  No subpath support upstream (UPTIME_KUMA_BASE_PATH exists only in
-  #  closed PRs), hence its own entrypoint rather than a path prefix.
-  # ─────────────────────────────────────────────────────────────────
-  uptime-kuma:
-    <<: *arr-service
-    profiles: [monitoring]
-    container_name: uptime-kuma
-    image: louislam/uptime-kuma:${UPTIME_KUMA_TAG}
-    labels:
-      - traefik.enable=true
-      - traefik.docker.network=traefik
-      - traefik.http.routers.kuma.rule=PathPrefix(`/`)
-      - traefik.http.routers.kuma.priority=1
-      - traefik.http.routers.kuma.entrypoints=websecure-kuma
-      - traefik.http.routers.kuma.tls=true
-      - traefik.http.services.kuma.loadbalancer.server.port=3001
-    environment:
-      <<: *common-env
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      # SQLite lives here — block storage only, never NFS.
-      - ${DOCKERCONFDIR}/uptime-kuma:/app/data
-      # Read-only, for container-level monitors.
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:3001/ >/dev/null 2>&1 || wget -qO- http://127.0.0.1:3001/ >/dev/null 2>&1 || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 60s
-
-  # ─────────────────────────────────────────────────────────────────
   #  Tinyauth — profile: sso. Holds "/" on :8445
   #
   #  Single sign-on for the admin surface. The `auth@file` middleware
@@ -507,8 +493,8 @@ services:
   #  here under --auth=sso, and is a no-op under --auth=none. That
   #  indirection is why the routers need no conditional labels.
   #
-  #  Not applied to Plex/Jellyfin (their clients cannot do forward
-  #  auth) or Uptime Kuma (it has its own account).
+  #  Not applied to Plex/Jellyfin: their clients cannot do forward
+  #  auth.
   # ─────────────────────────────────────────────────────────────────
   tinyauth:
     <<: *arr-service

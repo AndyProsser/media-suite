@@ -30,7 +30,6 @@ MEDIA_APP=""
 AUTH_MODE=""
 SSO_PASSWORD_FILE=""
 DOCKERCONFDIR_CACHED=""
-WITH_MONITORING=1
 # Detected host values, kept in memory so --dry-run can report
 # accurately without having written .env.
 ENV_CREATED=0
@@ -47,6 +46,7 @@ FORCE_CERT=0
 NEEDS_PROXY_RESTART=0
 DATA_DIR=""
 CONFIG_DIR=""
+WITH_SMB=0
 
 usage() {
   cat <<'USAGE'
@@ -65,7 +65,8 @@ Options:
                              storage (iSCSI or local disk), never NFS.
   --data-dir=PATH            Media library and downloads. NFS is fine.
   --with-portainer           Also deploy Portainer (container GUI).
-  --no-monitoring            Skip Uptime Kuma.
+  --smb                      Share the data directory over SMB, native on
+                             the host. See docs/file-sharing.md.
   --skip-docker-install      Fail rather than install Docker if absent.
   --skip-configure           Do not auto-wire the arr apps afterwards.
   --force-cert               Regenerate the TLS certificate even if one exists.
@@ -91,7 +92,7 @@ parse_args() {
       --config-dir=*)       CONFIG_DIR="${1#*=}" ;;
       --data-dir=*)         DATA_DIR="${1#*=}" ;;
       --with-portainer)     WITH_PORTAINER=1 ;;
-      --no-monitoring)      WITH_MONITORING=0 ;;
+      --smb)                WITH_SMB=1 ;;
       --skip-docker-install) SKIP_DOCKER=1 ;;
       --skip-configure)     SKIP_CONFIGURE=1 ;;
       --force-cert)         FORCE_CERT=1 ;;
@@ -147,7 +148,7 @@ preflight() {
 
   local -a busy=()
   local p
-  for p in 80 443 8443 8444; do
+  for p in 80 443 8443; do
     if port_in_use "$p" && ! docker ps --format '{{.Names}}' 2>/dev/null | grep -qx proxy; then
       busy+=("$p")
     fi
@@ -345,8 +346,8 @@ choose_auth_mode() {
   printf '                          Traefik dashboard. Adds one 46 MB container,\n'
   printf '                          and needs a hostname (not an IP) that your\n'
   printf '                          devices can resolve.\n\n'
-  printf '    Either way Homarr, Uptime Kuma and the media server keep their own\n'
-  printf '    accounts — neither option can remove those.\n\n'
+  printf '    Either way Homarr and the media server keep their own accounts —\n'
+  printf '    neither option can remove those.\n\n'
   local reply
   read -r -p "    Choice [1]: " reply || true
   case "${reply:-1}" in
@@ -413,10 +414,19 @@ configure_env() {
 
   # Profiles are always rewritten: they encode the flags given now.
   local profiles="$MEDIA_APP"
-  (( WITH_MONITORING )) && profiles="${profiles},monitoring"
   [[ "$AUTH_MODE" == "sso" ]] && profiles="${profiles},sso"
   env_set COMPOSE_PROFILES "$profiles"
   log_applied "Profiles: ${profiles}"
+
+  # SMB is a host-level feature, not a compose profile — but it still
+  # needs to persist across re-runs the same way, or a bare re-run
+  # without --smb would look like a request to remove it.
+  if (( WITH_SMB )); then
+    env_set SMB_SHARE "true"
+  else
+    env_get SMB_SHARE >/dev/null 2>&1 || env_set SMB_SHARE "false"
+  fi
+  WITH_SMB=0; [[ "$(env_get SMB_SHARE)" == "true" ]] && WITH_SMB=1
 
   # Advertise URLs depend on the detected address.
   local ip; ip="$(env_get SERVER_IP || printf '')"
@@ -500,7 +510,6 @@ create_directories() {
   else
     dirs+=("${conf}/jellyfin/config" "${conf}/jellyfin/cache")
   fi
-  (( WITH_MONITORING )) && dirs+=("${conf}/uptime-kuma")
   [[ "$AUTH_MODE" == "sso" ]] && dirs+=("${conf}/tinyauth")
 
   local t
@@ -797,7 +806,191 @@ configure_sso() {
     log_warn "A password was generated. Read it once, then delete the file:"
     log_info "  cat ${pwfile} && rm ${pwfile}"
   fi
+
+  # The SMB share (if requested) reuses this exact plaintext, captured
+  # here before it is discarded. This only fires on a FRESH account —
+  # see configure_smb_share for the fallback when Tinyauth's account
+  # already existed and the plaintext is gone.
+  if [[ "$WITH_SMB" == "1" ]]; then
+    local smb_user; smb_user="$(resolve_smb_user)"
+    [[ -n "$smb_user" ]] && ensure_smb_password "$smb_user" "$password"
+  fi
   unset password
+}
+
+# ── 6c. SMB share ──────────────────────────────────────────────────
+#
+# Native on the host, not a container: DOCKERSTORAGEDIR is a bind
+# mount, so the files already live at a real host path, and Windows
+# Network Browser visibility needs genuine LAN broadcast that Docker's
+# bridge network does not pass through cleanly. See docs/file-sharing.md.
+
+# Resolves the Unix account PUID/PGID already point at — the same one
+# every container writes files as. Samba operates as this account
+# rather than fighting it with force user/force group, so ownership
+# over SMB matches what the containers already produce.
+resolve_smb_user() {
+  local puid; puid="$(env_get PUID)"
+  getent passwd "$puid" 2>/dev/null | cut -d: -f1
+}
+
+smb_user_has_password() {
+  sudo pdbedit -L 2>/dev/null | cut -d: -f1 | grep -qx "$1"
+}
+
+# ensure_smb_password UNIX_USER [PLAINTEXT] — sets UNIX_USER's Samba
+# password to PLAINTEXT, or generates one if none is given (the case
+# where Tinyauth's own credentials already existed before --smb was
+# added, so its plaintext is gone). Idempotent: does nothing if a
+# Samba password is already set.
+ensure_smb_password() {
+  local unix_user="$1" password="${2:-}" generated=0
+  smb_user_has_password "$unix_user" && {
+    log_skip "Samba password already set for ${unix_user}"
+    return 0
+  }
+  (( DRY_RUN )) && { log_dry "would set the Samba password for ${unix_user}"; return 0; }
+
+  if [[ -z "$password" ]]; then
+    password="$(openssl rand -base64 18)"
+    generated=1
+  fi
+  if ! printf '%s\n%s\n' "$password" "$password" \
+      | sudo smbpasswd -s -a "$unix_user" >/dev/null 2>&1; then
+    log_warn "Could not set the Samba password for ${unix_user}."
+    unset password
+    return 1
+  fi
+  log_applied "Samba password set for ${unix_user} (SMB login: admin)"
+
+  if (( generated )); then
+    local dir="${DOCKERCONFDIR_CACHED}/tinyauth" pwfile
+    run sudo mkdir -p "$dir"
+    pwfile="${dir}/initial-smb-password"
+    sudo tee "$pwfile" >/dev/null <<<"$password"
+    run sudo chmod 600 "$pwfile"
+    run sudo chown "$(env_get PUID):$(env_get PGID)" "$pwfile"
+    log_warn "Tinyauth's password already existed, so it could not be reused for SMB."
+    log_warn "A separate SMB password was generated. Read it once, then delete the file:"
+    log_info "  cat ${pwfile} && rm ${pwfile}"
+  fi
+  unset password
+}
+
+# Split from configure_smb_share and called earlier in main(), before
+# configure_sso: ensure_smb_password (called from inside configure_sso,
+# to capture Tinyauth's plaintext before it is discarded) needs the
+# `smbpasswd` binary to already exist.
+install_smb_packages() {
+  [[ "$WITH_SMB" == "1" ]] || return 0
+  log_step "SMB packages"
+
+  if (( DRY_RUN )); then
+    log_dry "would install samba and wsdd"
+    return 0
+  fi
+
+  if have_cmd smbd && have_cmd wsdd; then
+    log_skip "samba and wsdd already installed"
+  else
+    log_info "Installing samba and wsdd..."
+    run sudo apt-get update -qq
+    run sudo apt-get install -y -qq samba wsdd
+    log_applied "samba and wsdd installed"
+  fi
+}
+
+configure_smb_share() {
+  [[ "$WITH_SMB" == "1" ]] || return 0
+  log_step "SMB share"
+
+  local data unix_user
+  data="$(env_get DOCKERSTORAGEDIR)"
+  unix_user="$(resolve_smb_user)"
+
+  if (( DRY_RUN )); then
+    log_dry "would share ${data} as //${DET_IP:-<server-ip>}/MediaShare"
+    return 0
+  fi
+
+  if [[ -z "$unix_user" ]]; then
+    log_warn "PUID $(env_get PUID) does not match a Unix account — skipping the SMB share."
+    return 0
+  fi
+
+  # smbusers is fully owned by this phase — rewritten wholesale, same
+  # as every other generated file in this repo.
+  printf 'admin = %s\n' "$unix_user" | sudo tee /etc/samba/smbusers >/dev/null
+
+  # Everything this phase manages lives in its own included file
+  # rather than editing smb.conf's [global] section in place, so a
+  # re-run never has to parse or preserve anything an operator added
+  # by hand. `username map` must sit in [global] context, so the
+  # include line is spliced into the stock [global] section once.
+  local managed="/etc/samba/media-suite.conf"
+  {
+    printf '# Managed by media-suite install.sh --smb. Regenerated on every\n'
+    printf '# run — edit smb.conf outside of this include instead.\n'
+    printf 'username map = /etc/samba/smbusers\n\n'
+    printf '[MediaShare]\n'
+    printf '   path = %s\n' "$data"
+    printf '   browseable = yes\n'
+    printf '   read only = no\n'
+    printf '   create mask = 0664\n'
+    printf '   directory mask = 0775\n'
+    if [[ "$AUTH_MODE" == "sso" ]]; then
+      printf '   guest ok = no\n'
+      # username map has already resolved "admin" to unix_user by the
+      # time this is checked, so it must name the resolved account.
+      printf '   valid users = %s\n' "$unix_user"
+    else
+      printf '   guest ok = yes\n'
+      printf '   guest only = yes\n'
+      printf '   guest account = %s\n' "$unix_user"
+    fi
+  } | sudo tee "$managed" >/dev/null
+
+  local conf="/etc/samba/smb.conf"
+  if ! sudo grep -qF "include = ${managed}" "$conf"; then
+    run sudo sed -i "/^\[global\]/a\\   include = ${managed}" "$conf"
+    log_applied "Spliced media-suite's include into smb.conf's [global]"
+  else
+    log_skip "smb.conf already includes media-suite.conf"
+  fi
+
+  if ! sudo testparm -s >/dev/null 2>&1; then
+    log_warn "smb.conf failed validation (testparm) — check it by hand."
+  fi
+  run sudo systemctl enable --now smbd nmbd wsdd
+  run sudo systemctl restart smbd nmbd wsdd
+  log_applied "SMB share configured (${AUTH_MODE} mode)"
+
+  # Fallback path: if configure_sso just created a fresh account, the
+  # password is already set and this is a no-op. If Tinyauth's account
+  # pre-dated --smb, this generates SMB's own password instead.
+  [[ "$AUTH_MODE" == "sso" ]] && ensure_smb_password "$unix_user"
+}
+
+configure_smb_firewall() {
+  [[ "$WITH_SMB" == "1" ]] || return 0
+  have_cmd ufw || return 0
+  sudo ufw status 2>/dev/null | grep -q "^Status: active" || return 0
+
+  log_step "SMB firewall rules"
+  (( DRY_RUN )) && { log_dry "would open samba + WS-Discovery ports in ufw"; return 0; }
+
+  if sudo ufw status | grep -qi samba; then
+    log_skip "ufw: samba already allowed"
+  else
+    run sudo ufw allow samba
+    log_applied "ufw: allowed samba (137,138/udp, 139,445/tcp)"
+  fi
+  if sudo ufw status | grep -q '3702/udp'; then
+    log_skip "ufw: 3702/udp already allowed"
+  else
+    run sudo ufw allow 3702/udp
+    log_applied "ufw: allowed 3702/udp (WS-Discovery)"
+  fi
 }
 
 install_traefik_config() {
@@ -970,8 +1163,8 @@ print_summary() {
   else
     printf '  %-14s %s\n' "Jellyfin"  "https://${ip}:8443/  (clients: http://${ip}:8096)"
   fi
-  (( WITH_MONITORING )) && printf '  %-14s %s\n' "Uptime Kuma" "https://${ip}:8444/"
   (( WITH_PORTAINER ))  && printf '  %-14s %s\n' "Portainer"   "https://${ip}/docker"
+  (( WITH_SMB ))        && printf '  %-14s %s\n' "SMB share"   "\\\\${ip}\\MediaShare"
 
   printf '\n  %sAuthentication%s\n' "$C_BOLD" "$C_RESET"
   if [[ "$AUTH_MODE" == "sso" ]]; then
@@ -981,18 +1174,18 @@ print_summary() {
       printf '    %s· Your generated password: cat %s%s\n' "$C_YELLOW" "$SSO_PASSWORD_FILE" "$C_RESET"
       printf '      Read it once, then delete that file.\n'
     fi
-    printf '    · Uptime Kuma and the media server keep their own accounts.\n'
+    printf '    · The media server keeps its own account.\n'
+    (( WITH_SMB )) && printf '    · The SMB share uses the same "admin" login.\n'
   else
     printf '    · No login on the LAN for the arr apps or qBittorrent.\n'
     printf '    · Anything that can reach this box controls your library.\n'
     printf '    · Switch later with: ./scripts/install.sh --auth=sso\n'
+    (( WITH_SMB )) && printf '    · The SMB share allows guest access — no login needed.\n'
   fi
 
   printf '\n  %sNotes%s\n' "$C_BOLD" "$C_RESET"
   printf '    · The certificate is self-signed; your browser will warn once.\n'
   printf '    · qBittorrent password: docker logs qbittorrent 2>&1 | grep -i password\n'
-  (( WITH_MONITORING )) && \
-  printf '    · Uptime Kuma monitors are not auto-created — see docs/monitoring.md\n'
   [[ -n "${NEEDS_RELOGIN:-}" ]] && \
   printf '    %s· Log out and back in for docker group membership to apply.%s\n' "$C_YELLOW" "$C_RESET"
   printf '\n  Next: docs/troubleshooting.md if anything looks wrong.\n\n'
@@ -1014,8 +1207,11 @@ main() {
   collect_plex_claim
   create_directories
   generate_secrets
+  install_smb_packages
   configure_sso_host
   configure_sso
+  configure_smb_share
+  configure_smb_firewall
   generate_certificates
   install_traefik_config
   create_network

@@ -13,9 +13,9 @@ change, not a rebuild.
 
 ## What the stack looked like before
 
-Eight separate credentials: four arr apps, qBittorrent, Homarr, Uptime Kuma, and
-the media server — and the Traefik dashboard, which can rewrite your routing, had
-no authentication at all.
+Seven separate credentials: four arr apps, qBittorrent, Homarr, and the media
+server — and the Traefik dashboard, which can rewrite your routing, had no
+authentication at all.
 
 ## SSO
 
@@ -24,13 +24,16 @@ One account covers everything reached through the proxy on `:443`:
 | Behind the single login    | Keeps its own account    |
 | -------------------------- | ------------------------ |
 | Homarr `/`                 | Plex or Jellyfin `:8443` |
-| Radarr `/movies`           | Uptime Kuma `:8444`      |
+| Radarr `/movies`           |                          |
 | Sonarr `/tv`               |                          |
 | Lidarr `/music`            |                          |
 | Prowlarr `/idx`            |                          |
 | qBittorrent `/download`    |                          |
 | Traefik dashboard `/admin` |                          |
 | Portainer `/docker`        |                          |
+
+If `install.sh --smb` was used, the SMB share also uses this same login — see
+[file-sharing.md](file-sharing.md).
 
 The media server is excluded deliberately: Plex and Jellyfin client apps cannot
 complete a browser login flow, so putting them behind forward auth would break
@@ -146,9 +149,11 @@ To change the password, delete `users` in that directory and re-run
 
 ## None (default)
 
-No login on the LAN for the arr apps or qBittorrent. Homarr, Uptime Kuma and the
-media server still have their own accounts — neither option removes those, so
-this gets you from eight credentials to three rather than to zero.
+No login on the LAN for the arr apps or qBittorrent. Homarr and the media
+server still have their own accounts — neither option removes those, so this
+gets you from seven credentials to two rather than to zero. If `install.sh
+--smb` was used, the SMB share also allows guest access with no login — see
+[file-sharing.md](file-sharing.md).
 
 This is the default because it needs no hostname, no DNS and no extra container
 — the stack works over a plain IP address exactly as it always has.
@@ -186,5 +191,5 @@ Recovery does not require the login:
 docker logs tinyauth                # then find out what went wrong
 ```
 
-The media server on `:8443` and Uptime Kuma on `:8444` are unaffected either way,
-since neither is behind the proxy's auth.
+The media server on `:8443` is unaffected either way, since it is not behind
+the proxy's auth.

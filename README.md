@@ -1,7 +1,7 @@
 # media-suite
 
 A self-hosted media stack for one box: Traefik terminating TLS in front of the
-\*arr apps, qBittorrent, a Homarr dashboard, Uptime Kuma, and your choice of
+\*arr apps, qBittorrent, a Homarr dashboard, and your choice of
 **Plex or Jellyfin**.
 
 Three scripts install it, update it, and remove it. Nothing is configured by
@@ -58,9 +58,9 @@ Want to see what it would do first?
 | qBittorrent        | `https://<server>/download` | Downloads                      |
 | Traefik            | `https://<server>/admin`    | Proxy dashboard                |
 | Plex _or_ Jellyfin | `https://<server>:8443/`    | Media server                   |
-| Uptime Kuma        | `https://<server>:8444/`    | Uptime monitoring              |
 | Portainer          | `https://<server>/docker`   | Container GUI (opt-in)         |
 | Tinyauth           | `https://<server>:8445/`    | Sign-in (opt-in, `--auth=sso`) |
+| SMB share          | `\\<server>\MediaShare`     | Windows file access (opt-in, `--smb`) |
 
 The certificate is self-signed, so your browser will warn you once.
 
@@ -71,7 +71,7 @@ nothing extra to run, and it works over a plain IP address.
 
 Optionally, one account can cover everything reached through the proxy: the
 dashboard, all four arr apps, qBittorrent, Portainer, and the Traefik dashboard.
-Plex/Jellyfin and Uptime Kuma keep their own accounts either way.
+Plex/Jellyfin keeps its own account either way.
 
 ```bash
 ./scripts/install.sh --auth=none   # default
@@ -131,7 +131,7 @@ on NFS.
 | [configuration.md](docs/configuration.md)     | Every `.env` variable                               |
 | [media-app.md](docs/media-app.md)             | Plex vs Jellyfin, and switching                     |
 | [authentication.md](docs/authentication.md)   | SSO vs none, and how to switch                      |
-| [monitoring.md](docs/monitoring.md)           | Uptime Kuma setup and the monitor set               |
+| [file-sharing.md](docs/file-sharing.md)       | The native SMB share, opt-in via `--smb`             |
 | [troubleshooting.md](docs/troubleshooting.md) | When something is wrong                             |
 
 ## Configuring the apps themselves

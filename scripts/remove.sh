@@ -18,6 +18,7 @@ trap 'on_error $LINENO' ERR
 
 PURGE=0
 PURGE_MEDIA=0
+PURGE_SMB=0
 KEEP_IMAGES=0
 REMOVE_NETWORK=0
 
@@ -34,6 +35,9 @@ Options:
   --purge-media      Also delete the media library and downloads
                      (DOCKERSTORAGEDIR). Requires typing the path to
                      confirm. Never implied by --purge.
+  --purge-smb        Also remove the native SMB share configuration
+                     (if --smb was used) and offer to remove the samba
+                     and wsdd packages. Never implied by --purge.
   --keep-images      Do not remove the stack's images.
   --remove-network   Also remove the shared external 'traefik' network.
   --non-interactive  Skip confirmations. --purge-media still needs its
@@ -49,6 +53,7 @@ parse_args() {
     case "$1" in
       --purge)           PURGE=1 ;;
       --purge-media)     PURGE_MEDIA=1; PURGE=1 ;;
+      --purge-smb)       PURGE_SMB=1 ;;
       --keep-images)     KEEP_IMAGES=1 ;;
       --remove-network)  REMOVE_NETWORK=1 ;;
       --non-interactive) NON_INTERACTIVE=1 ;;
@@ -76,6 +81,10 @@ show_plan() {
   fi
   if (( PURGE_MEDIA )); then
     printf '    %s%s· %s  (YOUR ENTIRE MEDIA LIBRARY)%s\n' "$C_BOLD" "$C_RED" "$data" "$C_RESET"
+  fi
+  if (( PURGE_SMB )); then
+    printf '    %s· the SMB share configuration (samba/wsdd packages kept unless you say so)%s\n' \
+      "$C_YELLOW" "$C_RESET"
   fi
 
   printf '\n  %sThis will be kept:%s\n' "$C_BOLD" "$C_RESET"
@@ -105,8 +114,50 @@ remove_stack() {
   (( PURGE ))       && args+=(--volumes)
   # Bring down every profile, not just the active one, so a stack
   # installed with Plex is fully removed after switching to Jellyfin.
-  run compose --profile plex --profile jellyfin --profile monitoring "${args[@]}"
+  run compose --profile plex --profile jellyfin "${args[@]}"
   log_applied "Containers removed"
+}
+
+purge_smb() {
+  (( PURGE_SMB )) || return 0
+  log_step "Removing SMB share"
+
+  if [[ "$(env_get SMB_SHARE 2>/dev/null || printf 'false')" != "true" ]]; then
+    log_skip "SMB share was not enabled"
+    return 0
+  fi
+
+  local managed="/etc/samba/media-suite.conf" conf="/etc/samba/smb.conf"
+
+  if (( DRY_RUN )); then
+    log_dry "would remove ${managed}, its include in smb.conf, and its Samba password"
+    return 0
+  fi
+
+  if sudo test -f "$managed"; then
+    run sudo rm -f "$managed"
+    log_applied "Removed ${managed}"
+  fi
+  if sudo grep -qF "include = ${managed}" "$conf" 2>/dev/null; then
+    run sudo sed -i "\\|include = ${managed}|d" "$conf"
+    log_applied "Removed the include line from smb.conf"
+  fi
+  run sudo rm -f /etc/samba/smbusers
+
+  local unix_user
+  unix_user="$(getent passwd "$(env_get PUID 2>/dev/null || printf '')" 2>/dev/null | cut -d: -f1)"
+  [[ -n "$unix_user" ]] && { run sudo smbpasswd -x "$unix_user" >/dev/null 2>&1 || true; }
+
+  have_cmd systemctl && { run sudo systemctl restart smbd nmbd wsdd 2>/dev/null || true; }
+  env_set SMB_SHARE "false"
+  log_applied "SMB share configuration removed"
+
+  if confirm "Also remove the samba and wsdd packages?" n; then
+    run sudo apt-get remove -y -qq samba wsdd
+    log_applied "Removed samba and wsdd packages"
+  else
+    log_info "Left samba and wsdd installed but unconfigured."
+  fi
 }
 
 purge_data() {
@@ -152,6 +203,7 @@ main() {
   remove_stack
   purge_data
   purge_media
+  purge_smb
   remove_network
 
   printf '\n  %sDone.%s\n' "$C_GREEN" "$C_RESET"

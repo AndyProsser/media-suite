@@ -17,8 +17,17 @@ All notable changes to this project are documented here. Format follows
 - **Jellyfin as an alternative to Plex**, selected at install time and switched
   later through `COMPOSE_PROFILES`. Both config directories persist, so
   switching is lossless.
-- **Uptime Kuma** on its own TLS entrypoint (`:8444`), replacing the Prometheus
-  and Grafana stack.
+- **Byparr**, a FlareSolverr-compatible Cloudflare-challenge solver for
+  Prowlarr's indexers. Internal only — no Traefik route, no published port,
+  same treatment as `docker-proxy`. `configure.sh` registers it with Prowlarr
+  automatically as an Indexer Proxy.
+- **A native SMB share**, opt-in via `install.sh --smb`. Deliberately not a
+  container: `DOCKERSTORAGEDIR` is a bind mount, so the files already live at
+  a real host path, and Windows Network Browser visibility needs genuine LAN
+  broadcast that Docker's bridge network does not pass through. Auth follows
+  the stack's own `--auth` mode — guest read-write under `none`, the same
+  login as Tinyauth's `admin` account under `sso`, captured from the same
+  plaintext before it is hashed. See `docs/file-sharing.md`.
 - **Settings added by a repo update now reach an existing `.env`.** A `git pull`
   cannot modify `.env`, so a new variable stayed undefined and Compose warned
   about it on every run. `install.sh` backfills any setting `.env.example`
@@ -37,8 +46,8 @@ All notable changes to this project are documented here. Format follows
   qBittorrent,
   Portainer and the Traefik dashboard. The arr apps are set to trust the proxy
   and `configure.sh` tells qBittorrent to do the same, so there is no second
-  prompt behind the first. Plex/Jellyfin and Uptime Kuma keep their own accounts;
-  media clients cannot complete a browser login flow. Switchable by re-running.
+  prompt behind the first. Plex/Jellyfin keeps its own account; media clients
+  cannot complete a browser login flow. Switchable by re-running.
 - **`--auth=none` is the default.** SSO needs a hostname and an extra container;
   the default now needs neither and works over a plain IP.
 - **`<hostname>.local` is offered for SSO**, answered by mDNS rather than DNS, so
@@ -65,7 +74,7 @@ All notable changes to this project are documented here. Format follows
   workflow running ShellCheck, Ruff, Compose validation for both media
   profiles, and markdownlint.
 - `docs/` — architecture (with topology diagram and design rationale),
-  configuration reference, Plex/Jellyfin comparison, monitoring setup, and
+  configuration reference, Plex/Jellyfin comparison, file sharing, and
   troubleshooting.
 
 ### Fixed
@@ -81,6 +90,13 @@ All notable changes to this project are documented here. Format follows
   it also requires a name and default quality and metadata profile IDs. The
   payload is now built per application, looking up Lidarr's available profiles
   and preferring one named "Standard".
+- **A Remote Path Mapping was never needed, but nothing stopped one from being
+  added.** Every \*arr app and qBittorrent mount `DOCKERSTORAGEDIR` at the same
+  container path, so their paths already match by design — a mapping here
+  almost always means qBittorrent's own save path was never pointed at
+  `/data/torrents/`. `configure.sh` now sets that save path directly and
+  removes any stale mapping it finds instead of leaving the workaround in
+  place.
 - **Arr validation errors are now one readable line.** A rejected POST returns a
   JSON array of field errors; dumping it raw buried the useful part in escaped
   punctuation.
@@ -126,7 +142,7 @@ All notable changes to this project are documented here. Format follows
   also referenced an undefined `traefik-auth` middleware, a `monitoring.env`
   that was not in the repo, and a missing `prometheus.yml`; Grafana was
   configured with initial admin creation disabled and no alternative auth,
-  making it unloggable. Removed in favour of Uptime Kuma.
+  making it unloggable. Removed rather than fixed — see Removed, below.
 - **The Traefik API was exposed unauthenticated on the LAN** via
   `--api.insecure=true` and a published port 8080. Both removed; the dashboard
   is served over TLS at `/admin`.
@@ -150,9 +166,11 @@ All notable changes to this project are documented here. Format follows
 
 ### Removed
 
-- **Prometheus and Grafana.** Two services, a scrape config, a provisioning
-  tree and an auth middleware to answer "is anything down?". Uptime Kuma
-  answers it in ~100 MB of RAM.
+- **Prometheus and Grafana**, and later Uptime Kuma too. Two services, a
+  scrape config, a provisioning tree and an auth middleware, all to answer
+  "is anything down?" — replaced by Uptime Kuma, then dropped again as
+  redundant: most operators running a stack like this already have monitoring
+  elsewhere on the homelab.
 - **Readarr** (and the `bookshelf` fork it actually ran). Readarr is
   end-of-life; its route and `books` directories are gone.
 - **`media-suite.env` is no longer tracked.** It held a secret key and a Plex

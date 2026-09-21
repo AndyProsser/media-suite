@@ -5,9 +5,11 @@ Instructions for Claude Code working in this repository.
 ## What this is
 
 A self-hosted media stack for a single homelab box: Traefik terminating TLS in
-front of Radarr, Sonarr, Lidarr, Prowlarr, qBittorrent, Homarr, Uptime Kuma, and
-either Plex or Jellyfin. Everything is Docker Compose plus bash. There is no
-application code here — the product is the install experience.
+front of Radarr, Sonarr, Lidarr, Prowlarr, Byparr, qBittorrent, Homarr, and
+either Plex or Jellyfin. Almost everything is Docker Compose plus bash — the
+one deliberate exception is the SMB share (`install.sh --smb`), which is
+native on the host, not a container; see docs/file-sharing.md for why. There
+is no other application code here — the product is the install experience.
 
 Scope is one machine on a LAN. It is not, and should not become, a multi-node or
 enterprise deployment.
@@ -57,13 +59,15 @@ entry by name before creating it.
 
 ## Storage — the rule that matters most
 
-`DOCKERCONFDIR` holds **SQLite databases** (every arr app, Homarr, Uptime Kuma).
-It must live on **block storage** — iSCSI or a local disk. **Never NFS.** File
-locking over NFS is not reliable enough for concurrent writes and will corrupt
-these databases.
+`DOCKERCONFDIR` holds **SQLite databases** (every arr app, Homarr). It must
+live on **block storage** — iSCSI or a local disk. **Never NFS.** File locking
+over NFS is not reliable enough for concurrent writes and will corrupt these
+databases.
 
 `DOCKERSTORAGEDIR` is bulk media and downloads: large files, single writer, no
-locking requirements. NFS is fine and appropriate here.
+locking requirements. NFS is fine and appropriate here. It is also the only
+directory the optional SMB share (`--smb`) ever exposes — never suggest
+sharing `DOCKERCONFDIR` over SMB.
 
 This split is the single most consequential deployment decision in the repo.
 Do not blur it, and do not suggest putting appdata on an NFS share.
@@ -76,7 +80,6 @@ get their own TLS entrypoint:
 
 - `:443` → Homarr at `/`, everything else on a prefix
 - `:8443` → Plex or Jellyfin
-- `:8444` → Uptime Kuma (no upstream subpath support)
 
 Adding a service that needs `/` means adding an entrypoint, not fighting
 priorities.
@@ -115,8 +118,10 @@ route 404s. Never make the middleware label conditional on the profile; swap the
 file instead. Traefik watches the directory, so it applies with no restart.
 
 Tinyauth's own route must never sit behind `auth@file` — it serves the login
-page. Plex, Jellyfin and Uptime Kuma are excluded too: media clients cannot
-complete a browser login flow.
+page. Plex and Jellyfin are excluded too: media clients cannot complete a
+browser login flow. The SMB share follows `--auth` on its own terms (guest
+under `none`, Tinyauth's own credential under `sso`) rather than `auth@file` —
+it's a different protocol Traefik never touches. See docs/file-sharing.md.
 
 Tinyauth is v5 from `ghcr.io/tinyauthapp/tinyauth` — the `steveiliop56` path is
 abandoned after v5.0.7. v5 namespaces all config under `TINYAUTH_*`; the flat v3
@@ -159,6 +164,9 @@ left it permanently unhealthy and invisible to the proxy.
   self-signed certs or plain HTTP inside the Docker network.
 - qBittorrent's middleware order is `redirect,strip` and must stay that way —
   strip-first means the trailing-slash redirect can never match.
-- Homarr, the media app and Uptime Kuma all use `PathPrefix(`/`)` at
-  `priority=1`. Distinct entrypoints keep them apart; the low priority keeps
-  them from shadowing the path-prefixed apps.
+- Homarr and the media app both use `PathPrefix(`/`)` at `priority=1`.
+  Distinct entrypoints keep them apart; the low priority keeps them from
+  shadowing the path-prefixed apps.
+- Byparr carries no `traefik.enable` label and publishes no port — same
+  treatment as `docker-proxy`. Only Prowlarr, over the internal network, ever
+  talks to it. This is deliberate, not a missing route.

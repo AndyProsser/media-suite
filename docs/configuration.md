@@ -10,18 +10,18 @@ never overwritten by a re-run.
 
 | Variable               | Default           | Purpose                                                                         |
 | ---------------------- | ----------------- | ------------------------------------------------------------------------------- |
-| `COMPOSE_PROJECT_NAME` | `media-suite`     | Docker project name. Changing it after install orphans the existing containers. |
-| `COMPOSE_PROFILES`     | `plex,monitoring` | Which components run. See below.                                                |
+| `COMPOSE_PROJECT_NAME` | `media-suite` | Docker project name. Changing it after install orphans the existing containers. |
+| `COMPOSE_PROFILES`     | `plex`        | Which components run. See below.                                                |
 
 ### `COMPOSE_PROFILES`
 
 A comma-separated list controlling which optional services exist:
 
 - `plex` **or** `jellyfin` — exactly one media server. See [media-app.md](media-app.md).
-- `monitoring` — Uptime Kuma. Omit to skip it.
 
 Portainer is separate: it lives in its own compose file and is enabled with
-`install.sh --with-portainer`.
+`install.sh --with-portainer`. The SMB share is separate too, and isn't a
+Compose profile at all — see [file-sharing.md](file-sharing.md).
 
 ## Host identity
 
@@ -90,6 +90,12 @@ Set both at install time:
 ./scripts/install.sh --config-dir=/mnt/iscsi/appdata --data-dir=/mnt/nfs/media
 ```
 
+## SMB share
+
+| Variable    | Default | Purpose                                                          |
+| ----------- | ------- | ----------------------------------------------------------------- |
+| `SMB_SHARE` | `false` | Set to `true` by `install.sh --smb`. Native on the host, not a compose service — see [file-sharing.md](file-sharing.md). |
+
 ## Logging
 
 | Variable                | Default | Purpose                               |
@@ -109,8 +115,8 @@ Every image is pinned. There is no `:latest` anywhere, and no Watchtower.
 | `RADARR_TAG`, `SONARR_TAG`, `LIDARR_TAG`, `PROWLARR_TAG`, `QBITTORRENT_TAG` | `release` |
 | `HOMARR_TAG`                                                                | `v1.77.2` |
 | `PLEX_TAG`, `JELLYFIN_TAG`                                                  | `release` |
-| `UPTIME_KUMA_TAG`                                                           | `2`       |
 | `PORTAINER_TAG`                                                             | `lts`     |
+| `BYPARR_TAG`                                                                | `v3.0.4`  |
 
 `update.sh --check` also compares your pinned tags against the ones recommended
 in `.env.example` and reports any that have moved — a `git pull` cannot change

@@ -27,8 +27,9 @@ flowchart TB
 
         subgraph roots["Own entrypoint"]
             media["Plex <i>or</i> Jellyfin<br/>:8443"]
-            kuma["Uptime Kuma<br/>:8444"]
         end
+
+        byparr["Byparr<br/><i>internal only</i>"]
     end
 
     subgraph storage["Storage"]
@@ -36,16 +37,22 @@ flowchart TB
         bulk[("<b>Bulk storage</b><br/>NFS is fine<br/><i>media + downloads</i>")]
     end
 
-    browser -->|":443 / :8443 / :8444"| traefik
+    subgraph lan["LAN clients (optional)"]
+        smb["Windows / SMB client"]
+    end
+
+    browser -->|":443 / :8443"| traefik
     app -->|"direct :32400 / :8096"| media
+    smb -.->|"native SMB, not through Traefik"| bulk
 
     traefik --> homarr & radarr & sonarr & lidarr & prowlarr & qbit
-    traefik --> media & kuma
+    traefik --> media
 
     prowlarr -.->|"syncs indexers"| radarr & sonarr & lidarr
+    prowlarr -.->|"Cloudflare challenges"| byparr
     radarr & sonarr & lidarr -.->|"send downloads"| qbit
 
-    homarr & radarr & sonarr & lidarr & prowlarr & qbit & media & kuma --> block
+    homarr & radarr & sonarr & lidarr & prowlarr & qbit & media --> block
     radarr & sonarr & lidarr & qbit & media --> bulk
 ```
 
@@ -54,8 +61,8 @@ flowchart TB
 Two directories, two very different jobs:
 
 **`DOCKERCONFDIR`** holds application config _and databases_. Every \*arr app is
-SQLite-backed. So are Homarr and Uptime Kuma. This directory **must live on
-block storage** — a local disk or an iSCSI LUN.
+SQLite-backed. So is Homarr. This directory **must live on block storage** — a
+local disk or an iSCSI LUN.
 
 **Never put it on NFS.** File locking over NFS is not reliable enough for
 concurrent writes. The failure mode is not a clean error; it is a corrupted
@@ -94,7 +101,6 @@ entrypoint:
 | ---------- | ---------------- | ------------------------------------- |
 | `:443`     | Homarr           | Dashboard is the natural landing page |
 | `:8443`    | Plex or Jellyfin | Neither works reliably under a prefix |
-| `:8444`    | Uptime Kuma      | No upstream subpath support at all    |
 
 Adding a service that needs `/` means adding an entrypoint, not fighting router
 priorities.
@@ -148,16 +154,34 @@ Instead, every image is pinned to an explicit tag in `.env`, and `update.sh` is
 the moment updates happen. You get a reproducible install, a rollback path (put
 the old tag back, re-run), and the ability to update one service at a time.
 
-## Why there is no Prometheus or Grafana
+## Why there is no monitoring stack
 
-An earlier version of this repo carried a Prometheus + Grafana stack. It was
-two services, a scrape config, a dashboard provisioning tree and an auth
-middleware, all to answer one question: _is anything down?_
+An earlier version of this repo carried a Prometheus + Grafana stack — two
+services, a scrape config, a dashboard provisioning tree and an auth
+middleware, all to answer one question: _is anything down?_ That was later
+replaced with Uptime Kuma, then dropped again: most operators running a stack
+like this already have monitoring somewhere else on the homelab, and a second,
+stack-local instance answering the same question is redundant rather than
+convenient. If you want it, Uptime Kuma (or anything else) is a five-line
+addition to `compose/compose.yml`, and the Traefik metrics endpoint is still
+there to scrape either way.
 
-Uptime Kuma answers that directly, in about 100 MB of RAM, with notifications
-built in and no query language to learn. For a dozen containers on one box,
-that is the right size of tool. If you later want real metrics, the Traefik
-metrics endpoint is still there to scrape.
+## Why Byparr is not exposed anywhere
+
+Byparr solves Cloudflare's JS challenge on Prowlarr's behalf, the same role
+FlareSolverr used to fill. Nothing outside this stack ever needs to talk to
+it directly — only Prowlarr does, over the internal `traefik` network — so it
+carries no `traefik.enable` label and publishes no port, the same treatment as
+`docker-proxy`. `configure.sh` registers it with Prowlarr automatically.
+
+## Why the SMB share is not a container
+
+See [file-sharing.md](file-sharing.md) for the full reasoning: in short,
+`DOCKERSTORAGEDIR` is a bind mount, so the files already live at a real host
+path, and Windows Network Browser visibility needs genuine LAN broadcast that
+Docker's default bridge network does not pass through. It is installed and
+managed by `install.sh --smb` the same way Docker itself and `avahi-daemon`
+are — a host-level daemon, not a compose service.
 
 ## Idempotence
 
