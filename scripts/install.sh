@@ -503,7 +503,7 @@ create_directories() {
     "${traefik}/acme" "${traefik}/certificates"
     "${traefik}/config" "${traefik}/config/dynamic" "${traefik}/logs"
     "${conf}/radarr" "${conf}/sonarr" "${conf}/lidarr"
-    "${conf}/prowlarr" "${conf}/qbittorrent" "${conf}/homarr"
+    "${conf}/prowlarr" "${conf}/qbittorrent" "${conf}/homarr" "${conf}/seerr"
   )
   if [[ "$MEDIA_APP" == "plex" ]]; then
     dirs+=("${conf}/plex/config" "${conf}/plex/transcode")
@@ -1201,6 +1201,7 @@ print_summary() {
   printf '  %-14s %s\n' "Lidarr"     "https://${ip}/music"
   printf '  %-14s %s\n' "Prowlarr"   "https://${ip}/idx"
   printf '  %-14s %s\n' "qBittorrent" "https://${ip}/download"
+  printf '  %-14s %s\n' "Seerr"      "https://${ip}/discover"
   printf '  %-14s %s\n' "Traefik"    "https://${ip}/admin"
   if [[ "$MEDIA_APP" == "plex" ]]; then
     printf '  %-14s %s\n' "Plex"      "https://${ip}:8443/  (clients: http://${ip}:32400)"
@@ -1230,6 +1231,8 @@ print_summary() {
   printf '\n  %sNotes%s\n' "$C_BOLD" "$C_RESET"
   printf '    · The certificate is self-signed; your browser will warn once.\n'
   printf '    · qBittorrent password: docker logs qbittorrent 2>&1 | grep -i password\n'
+  printf '    · Seerr needs a one-time setup at /discover: create the owner\n'
+  printf '      account, then connect Radarr/Sonarr. See docs/configuration.md.\n'
   [[ -n "${NEEDS_RELOGIN:-}" ]] && \
   printf '    %s· Log out and back in for docker group membership to apply.%s\n' "$C_YELLOW" "$C_RESET"
   printf '\n  Next: docs/troubleshooting.md if anything looks wrong.\n\n'

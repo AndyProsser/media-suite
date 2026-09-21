@@ -8,6 +8,8 @@
 #    Apps that tolerate a subpath get a path prefix on :443.
 #    Apps that must own "/" get their own TLS entrypoint.
 #      :443  → Homarr        :8443 → Plex/Jellyfin
+#    Exception: Seerr wants "/" too but has no supported subpath mode
+#    at all (not even a tolerant one) — see the seerr service below.
 # ===================================================================
 
 x-common-env: &common-env
@@ -405,6 +407,63 @@ services:
       - ${DOCKERSTORAGEDIR}:/data
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/ >/dev/null 2>&1 || wget -qO- http://127.0.0.1:8080/ >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # ─────────────────────────────────────────────────────────────────
+  #  Seerr — media discovery and request management
+  #
+  #  Runs at /discover on :443, against this repo's own routing rule
+  #  ("apps that need `/` get their own entrypoint"): Seerr has no
+  #  officially supported base-URL/subpath mode, only subdomains. This
+  #  is the unsupported Nginx-style subfolder workaround, ported to
+  #  Traefik, chosen deliberately over a dedicated entrypoint. It can
+  #  break on a Seerr upgrade that changes its asset paths — symptom is
+  #  a blank page or broken CSS/JS at /discover, not a 404. If that
+  #  happens, check Seerr's release notes before touching this block;
+  #  the fix is usually waiting for the strip-prefix approach to work
+  #  again, or pinning SEERR_TAG back to the last known-good version.
+  #
+  #  No configure.sh wiring. Radarr/Sonarr registration needs an owner
+  #  account first, created through Seerr's own setup wizard (Plex,
+  #  Jellyfin, or local login) — there is no bootstrap API key to read
+  #  the way there is for Radarr/Sonarr/Prowlarr. See
+  #  docs/configuration.md for the one-time manual steps.
+  #
+  #  The official image runs as a fixed uid 1000 "node" user and does
+  #  not read PUID/PGID env vars — `user:` below overrides it directly
+  #  instead, so /app/config ends up owned like every other app's.
+  # ─────────────────────────────────────────────────────────────────
+  seerr:
+    <<: *arr-service
+    container_name: seerr
+    image: ghcr.io/seerr-team/seerr:${SEERR_TAG}
+    user: "${PUID}:${PGID}"
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=traefik
+      - traefik.http.routers.seerr.rule=PathPrefix(`/discover`)
+      - traefik.http.routers.seerr.entrypoints=websecure
+      - traefik.http.routers.seerr.tls=true
+      # Order matters: redirect must run BEFORE strip, or the trailing
+      # -slash redirect can never match its own prefix.
+      - traefik.http.routers.seerr.middlewares=auth@file,seerr-redirect,seerr-strip
+      - traefik.http.middlewares.seerr-redirect.redirectregex.regex=^(.*)/discover$$
+      - traefik.http.middlewares.seerr-redirect.redirectregex.replacement=$$1/discover/
+      - traefik.http.middlewares.seerr-strip.stripprefix.prefixes=/discover/
+      - traefik.http.services.seerr.loadbalancer.server.port=5055
+    environment:
+      TZ: ${TZ}
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ${DOCKERCONFDIR}/seerr:/app/config
+    healthcheck:
+      # Deliberately not /api/v1/status: it pings GitHub internally and
+      # flaps unhealthy on a GitHub outage, which would pull Seerr off
+      # the router table for a reason that has nothing to do with it.
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:5055/ >/dev/null 2>&1 || wget -qO- http://127.0.0.1:5055/ >/dev/null 2>&1 || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5

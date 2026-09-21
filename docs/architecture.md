@@ -23,6 +23,7 @@ flowchart TB
             lidarr["Lidarr<br/><code>/music</code>"]
             prowlarr["Prowlarr<br/><code>/idx</code>"]
             qbit["qBittorrent<br/><code>/download</code>"]
+            seerr["Seerr<br/><code>/discover</code><br/><i>unsupported workaround</i>"]
         end
 
         subgraph roots["Own entrypoint"]
@@ -45,14 +46,15 @@ flowchart TB
     app -->|"direct :32400 / :8096"| media
     smb -.->|"native SMB, not through Traefik"| bulk
 
-    traefik --> homarr & radarr & sonarr & lidarr & prowlarr & qbit
+    traefik --> homarr & radarr & sonarr & lidarr & prowlarr & qbit & seerr
     traefik --> media
 
     prowlarr -.->|"syncs indexers"| radarr & sonarr & lidarr
     prowlarr -.->|"Cloudflare challenges"| byparr
     radarr & sonarr & lidarr -.->|"send downloads"| qbit
+    seerr -.->|"requests (manual setup)"| radarr & sonarr
 
-    homarr & radarr & sonarr & lidarr & prowlarr & qbit & media --> block
+    homarr & radarr & sonarr & lidarr & prowlarr & qbit & media & seerr --> block
     radarr & sonarr & lidarr & qbit & media --> bulk
 ```
 
@@ -104,6 +106,22 @@ entrypoint:
 
 Adding a service that needs `/` means adding an entrypoint, not fighting router
 priorities.
+
+### Seerr: a deliberate exception
+
+Seerr (media discovery/requests, `/discover`) doesn't fit the table above
+cleanly. It doesn't merely prefer `/` the way Plex/Jellyfin do — it has no
+officially supported subpath mode at all, only subdomains. The "right" answer
+by this repo's own rule would be another dedicated entrypoint.
+
+It runs at `/discover` on `:443` anyway, using the same redirect →
+strip-prefix middleware qBittorrent uses for `/download`. Seerr's own docs
+call an equivalent Nginx config an unsupported workaround that can break
+(wrong CSS/JS asset paths) when Seerr's build output changes shape. That
+tradeoff was made knowingly, in exchange for keeping everything on one port
+and one hostname. If `/discover` ever breaks after an upgrade, this is why —
+check Seerr's release notes, and consider pinning `SEERR_TAG` back to the last
+working version rather than trying to "fix" the routing.
 
 ### The escaping trap
 

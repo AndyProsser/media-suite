@@ -82,7 +82,8 @@ get their own TLS entrypoint:
 - `:8443` → Plex or Jellyfin
 
 Adding a service that needs `/` means adding an entrypoint, not fighting
-priorities.
+priorities. Seerr (`/discover`) is the one deliberate exception — see
+"Things that look like bugs but are not" below before touching its routing.
 
 Note the escaping difference: `$$` in Compose **labels**, single `$` in Traefik
 **file-provider** YAML. Mixing these up silently breaks redirects — it was a
@@ -125,7 +126,7 @@ it's a different protocol Traefik never touches. See docs/file-sharing.md.
 
 Tinyauth is v5 from `ghcr.io/tinyauthapp/tinyauth` — the `steveiliop56` path is
 abandoned after v5.0.7. v5 namespaces all config under `TINYAUTH_*`; the flat v3
-names are ignored *silently*, surfacing as "app URL cannot be empty" rather than
+names are ignored _silently_, surfacing as "app URL cannot be empty" rather than
 an unknown-variable error. It also refuses IP addresses, single-label names and
 public-suffix domains for its app URL, writes a SQLite database (so its volume
 must be writable, and it belongs on block storage), and ships its own
@@ -170,3 +171,16 @@ left it permanently unhealthy and invisible to the proxy.
 - Byparr carries no `traefik.enable` label and publishes no port — same
   treatment as `docker-proxy`. Only Prowlarr, over the internal network, ever
   talks to it. This is deliberate, not a missing route.
+- Seerr runs at `/discover` on `:443` via strip-prefix, even though Seerr has
+  no officially supported subpath mode (only subdomains) and this repo's own
+  rule says an app that needs `/` gets its own entrypoint. That rule was
+  knowingly broken here to keep everything on one port; see
+  `docs/architecture.md#seerr-a-deliberate-exception`. If `/discover` breaks
+  after a `SEERR_TAG` bump, that is the known failure mode, not a routing
+  regression to "fix" by copying the qBittorrent pattern harder.
+- Seerr has no `configure.sh` wiring, unlike every other \*arr-adjacent
+  service. It cannot: it has no bootstrap API key until an owner account
+  exists, and that account only comes from its own interactive setup wizard.
+  Same treatment as Plex/Jellyfin's first-run setup — don't try to script
+  around it without re-checking whether Seerr's setup API is actually stable
+  enough to drive unattended.

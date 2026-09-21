@@ -8,8 +8,8 @@ never overwritten by a re-run.
 
 ## Project
 
-| Variable               | Default           | Purpose                                                                         |
-| ---------------------- | ----------------- | ------------------------------------------------------------------------------- |
+| Variable               | Default       | Purpose                                                                         |
+| ---------------------- | ------------- | ------------------------------------------------------------------------------- |
 | `COMPOSE_PROJECT_NAME` | `media-suite` | Docker project name. Changing it after install orphans the existing containers. |
 | `COMPOSE_PROFILES`     | `plex`        | Which components run. See below.                                                |
 
@@ -92,8 +92,8 @@ Set both at install time:
 
 ## SMB share
 
-| Variable    | Default | Purpose                                                          |
-| ----------- | ------- | ----------------------------------------------------------------- |
+| Variable    | Default | Purpose                                                                                                                  |
+| ----------- | ------- | ------------------------------------------------------------------------------------------------------------------------ |
 | `SMB_SHARE` | `false` | Set to `true` by `install.sh --smb`. Native on the host, not a compose service — see [file-sharing.md](file-sharing.md). |
 
 ## Logging
@@ -117,6 +117,7 @@ Every image is pinned. There is no `:latest` anywhere, and no Watchtower.
 | `PLEX_TAG`, `JELLYFIN_TAG`                                                  | `release` |
 | `PORTAINER_TAG`                                                             | `lts`     |
 | `BYPARR_TAG`                                                                | `latest`  |
+| `SEERR_TAG`                                                                 | `v3.4.1`  |
 
 `BYPARR_TAG` is the one deliberate exception to "no `:latest`": Byparr's
 upstream CI never pushes a container tag matching its GitHub releases
@@ -175,6 +176,26 @@ Only used when `COMPOSE_PROFILES` includes `jellyfin`.
 | Variable                        | Purpose                                                                   |
 | ------------------------------- | ------------------------------------------------------------------------- |
 | `JELLYFIN_PUBLISHED_SERVER_URL` | Advertised to LAN clients for discovery. Set from `SERVER_IP` at install. |
+
+## Seerr
+
+Deployed at `https://<server>/discover`, but not configured by
+`configure.sh` — unlike Radarr/Sonarr/Prowlarr, Seerr has no bootstrap API
+key to read; it only gets one once an owner account exists, and that account
+can only be created through Seerr's own setup wizard. Complete it once after
+install:
+
+1. Open `https://<server>/discover` and create the owner account (Plex,
+   Jellyfin, or a local login — whichever matches your media server).
+2. In **Settings → Services**, add Radarr and Sonarr using their internal
+   addresses (`http://radarr:7878`, `http://sonarr:8989`) and the API key
+   from each app's own **Settings → General**.
+3. In **Settings → General**, enable **Proxy Support** — Seerr sits behind
+   Traefik now, and without this its CSRF/host checks can reject requests.
+
+See [architecture.md](architecture.md#seerr-a-deliberate-exception) for why
+`/discover` uses an unsupported routing workaround, and what to check first
+if it ever breaks after an update.
 
 ## TLS certificate
 
