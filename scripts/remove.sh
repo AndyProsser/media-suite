@@ -37,7 +37,7 @@ Options:
                      confirm. Never implied by --purge.
   --purge-smb        Also remove the native SMB share configuration
                      (if --smb was used) and offer to remove the samba
-                     and wsdd packages. Never implied by --purge.
+                     and wsdd-server packages. Never implied by --purge.
   --keep-images      Do not remove the stack's images.
   --remove-network   Also remove the shared external 'traefik' network.
   --non-interactive  Skip confirmations. --purge-media still needs its
@@ -83,7 +83,7 @@ show_plan() {
     printf '    %s%s· %s  (YOUR ENTIRE MEDIA LIBRARY)%s\n' "$C_BOLD" "$C_RED" "$data" "$C_RESET"
   fi
   if (( PURGE_SMB )); then
-    printf '    %s· the SMB share configuration (samba/wsdd packages kept unless you say so)%s\n' \
+    printf '    %s· the SMB share configuration (samba/wsdd-server packages kept unless you say so)%s\n' \
       "$C_YELLOW" "$C_RESET"
   fi
 
@@ -148,15 +148,18 @@ purge_smb() {
   unix_user="$(getent passwd "$(env_get PUID 2>/dev/null || printf '')" 2>/dev/null | cut -d: -f1)"
   [[ -n "$unix_user" ]] && { run sudo smbpasswd -x "$unix_user" >/dev/null 2>&1 || true; }
 
-  have_cmd systemctl && { run sudo systemctl restart smbd nmbd wsdd 2>/dev/null || true; }
+  if have_cmd systemctl; then
+    run sudo systemctl restart smbd nmbd 2>/dev/null || true
+    run sudo systemctl disable --now wsdd-server 2>/dev/null || true
+  fi
   env_set SMB_SHARE "false"
   log_applied "SMB share configuration removed"
 
-  if confirm "Also remove the samba and wsdd packages?" n; then
-    run sudo apt-get remove -y -qq samba wsdd
-    log_applied "Removed samba and wsdd packages"
+  if confirm "Also remove the samba and wsdd-server packages?" n; then
+    run sudo apt-get remove -y -qq samba wsdd-server
+    log_applied "Removed samba and wsdd-server packages"
   else
-    log_info "Left samba and wsdd installed but unconfigured."
+    log_info "Left samba and wsdd-server installed but unconfigured."
   fi
 }
 

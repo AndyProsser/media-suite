@@ -47,12 +47,21 @@ manual browsing).
 - `samba` — `smbd` (file serving) + `nmbd` (legacy NetBIOS browsing, still
   used by older clients and some Windows Explorer paths) + `samba-common-bin`
   (pulled in as a dependency; provides `smbpasswd`).
-- `wsdd` — WS-Discovery responder. Modern Windows 10/11 primarily discovers
-  LAN devices via WS-Discovery, not NetBIOS; Samba doesn't implement this
-  itself, so without `wsdd` the share often works by UNC path
+- `wsdd-server` — WS-Discovery responder. Modern Windows 10/11 primarily
+  discovers LAN devices via WS-Discovery, not NetBIOS; Samba doesn't
+  implement this itself, so without it the share often works by UNC path
   (`\\<ip>\MediaShare`) but never appears in the Network Browser on current
   Windows. Both daemons are installed together because between them they
   cover old and current clients.
+
+  **Not `wsdd`.** Debian/Ubuntu splits this into a bare CLI package (`wsdd`,
+  no systemd integration — confirmed on Ubuntu 26.04/resolute, where its man
+  page is section 1, a user command) and the actual daemon package
+  (`wsdd-server`, unit `wsdd-server.service`, `DynamicUser=yes`, chrooted).
+  The first implementation of this spec installed `wsdd` and tried to enable
+  a `wsdd.service` that doesn't exist — caught when Andy hit "Failed to
+  enable unit: Unit wsdd.service does not exist" on a live install. Fixed
+  before merge; documented here so it isn't rediscovered.
 
 Both are enabled and started via `systemctl enable --now`, following the
 existing `ensure_mdns()` pattern for `avahi-daemon`.
@@ -135,10 +144,11 @@ owned and rewritten wholesale.
 ## Firewall
 
 If `ufw` is active, `install.sh` opens what's needed:
-`ufw allow samba` (137,138/udp + 139,445/tcp) and `ufw allow 3702/udp`
-(WS-Discovery). Both are additive, idempotent (`ufw allow` is safe to repeat),
-and only run if `ufw status` reports active — same conditional style already
-used for the avahi phase.
+`ufw allow samba` (137,138/udp + 139,445/tcp) and `ufw allow wsdd` — the
+`wsdd` package ships its own ufw application profile, preferred here over a
+hardcoded port. Both are additive, idempotent (`ufw allow` is safe to
+repeat), and only run if `ufw status` reports active — same conditional
+style already used for the avahi phase.
 
 ## Credential capture
 
@@ -165,14 +175,14 @@ pattern as Tinyauth's own generated-password flow.
 line in `smb.conf`, `/etc/samba/smbusers`, and the Samba password entry
 (`smbpasswd -x`), and — behind a separate, explicit confirmation, since it's a
 system package removal rather than config — offers to `apt-get remove`
-`samba`/`wsdd`. Declining either leaves the packages installed but
+`samba`/`wsdd-server`. Declining either leaves the packages installed but
 unconfigured, which is safe.
 
 ## Docs
 
 New `docs/file-sharing.md`: what's shared, why it's native, how the two auth
-modes work, the discovery mechanism (nmbd + wsdd) and its own small
-troubleshooting section (client can't see the share → check `wsdd`/`nmbd` are
+modes work, the discovery mechanism (nmbd + wsdd-server) and its own small
+troubleshooting section (client can't see the share → check `wsdd-server`/`nmbd` are
 running and the firewall rules above; wrong file ownership over SMB → check
 `getent passwd $PUID` resolved to the account you expected).
 `docs/configuration.md` gets the new `--smb` flag documented alongside the

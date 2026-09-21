@@ -33,9 +33,17 @@ Re-runnable and persisted (`SMB_SHARE=true` in `.env`), so a later bare
 `./scripts/install.sh` keeps the share without repeating the flag.
 
 Installs `samba` (file serving, plus legacy NetBIOS browsing via `nmbd`) and
-`wsdd` (WS-Discovery, what modern Windows 10/11 actually uses to populate
-Network). Both matter: older clients still use NetBIOS, current ones mostly
-don't.
+`wsdd-server` (WS-Discovery, what modern Windows 10/11 actually uses to
+populate Network). Both matter: older clients still use NetBIOS, current ones
+mostly don't.
+
+`wsdd-server` — not `wsdd` — because Debian/Ubuntu split this into two
+packages: `wsdd` is a bare CLI tool with no systemd integration on current
+releases (its own man page is section 1, a user command, not section 8), and
+`wsdd-server` is what actually wraps it in a systemd unit
+(`wsdd-server.service`) and runs it as a background daemon. Installing the
+bare `wsdd` package (an earlier version of this feature's mistake) leaves you
+with a binary and nothing to start it.
 
 ## Auth follows the stack's `--auth` mode
 
@@ -91,8 +99,9 @@ stack manages lives in its own included file:
 ## Firewall
 
 If `ufw` is active, `install.sh --smb` opens what SMB and WS-Discovery need:
-`ufw allow samba` (137,138/udp, 139,445/tcp) and `ufw allow 3702/udp`. Both are
-additive and safe to re-run.
+`ufw allow samba` (137,138/udp, 139,445/tcp), and `ufw allow wsdd` — the
+`wsdd` package ships its own ufw application profile, which this uses in
+preference to a hardcoded port. Both are additive and safe to re-run.
 
 ## Removing it
 
@@ -101,16 +110,27 @@ additive and safe to re-run.
 ```
 
 Removes `media-suite.conf`, its include line in `smb.conf`, `smbusers`, and
-the Samba password entry. Offers separately to remove the `samba` and `wsdd`
-packages — declining leaves them installed but unconfigured, which is safe.
+the Samba password entry. Offers separately to remove the `samba` and
+`wsdd-server` packages — declining leaves them installed but unconfigured,
+which is safe.
 
 ## Troubleshooting
 
-**Doesn't show up in Windows Network Browser.** Check both discovery daemons
-are actually running:
+**`wsdd-server did not start` at install.** The share itself is unaffected —
+this only means WS-Discovery isn't running, so the share may not
+*auto-appear* in Windows Network Browser. Connect directly by UNC path
+(`\\<server-ip>\MediaShare`) in the meantime, and check:
 
 ```bash
-systemctl status smbd nmbd wsdd
+systemctl status wsdd-server
+journalctl -u wsdd-server --no-pager -n 50
+```
+
+**Doesn't show up in Windows Network Browser (but `wsdd-server` is running).**
+Check both discovery daemons are actually up:
+
+```bash
+systemctl status smbd nmbd wsdd-server
 ```
 
 Windows sometimes takes a minute or two to refresh Network; connecting
@@ -132,5 +152,5 @@ needs to point at a real Unix account.
 `ufw` is active, confirm the rules landed:
 
 ```bash
-sudo ufw status | grep -E 'samba|3702'
+sudo ufw status | grep -iE 'samba|wsdd'
 ```

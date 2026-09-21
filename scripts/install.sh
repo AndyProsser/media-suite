@@ -886,17 +886,29 @@ install_smb_packages() {
   log_step "SMB packages"
 
   if (( DRY_RUN )); then
-    log_dry "would install samba and wsdd"
+    log_dry "would install samba and wsdd-server"
     return 0
   fi
 
-  if have_cmd smbd && have_cmd wsdd; then
-    log_skip "samba and wsdd already installed"
+  # dpkg -s, not have_cmd: smbd/wsdd live under /usr/sbin or /usr/bin,
+  # neither reliably on a non-root invoking user's PATH, and — the
+  # actual bug this replaced — the bare `wsdd` package ships only a
+  # CLI tool with no systemd integration at all on newer Ubuntu
+  # releases (verified on 26.04/resolute: wsdd's own man page is
+  # section 1, a user command, not section 8). The systemd-managed
+  # daemon, unit `wsdd-server.service`, is a SEPARATE package,
+  # `wsdd-server`, which depends on `wsdd` for the binary. Installing
+  # bare `wsdd` and asking systemd to enable "wsdd" both silently
+  # target the wrong thing; `have_cmd wsdd` would also wrongly report
+  # "already installed" once the CLI-only package's binary exists,
+  # even with wsdd-server absent.
+  if dpkg -s samba wsdd-server >/dev/null 2>&1; then
+    log_skip "samba and wsdd-server already installed"
   else
-    log_info "Installing samba and wsdd..."
+    log_info "Installing samba and wsdd-server..."
     run sudo apt-get update -qq
-    run sudo apt-get install -y -qq samba wsdd
-    log_applied "samba and wsdd installed"
+    run sudo apt-get install -y -qq samba wsdd-server
+    log_applied "samba and wsdd-server installed"
   fi
 }
 
@@ -961,9 +973,24 @@ configure_smb_share() {
   if ! sudo testparm -s >/dev/null 2>&1; then
     log_warn "smb.conf failed validation (testparm) — check it by hand."
   fi
-  run sudo systemctl enable --now smbd nmbd wsdd
-  run sudo systemctl restart smbd nmbd wsdd
+  run sudo systemctl enable --now smbd nmbd
+  run sudo systemctl restart smbd nmbd
   log_applied "SMB share configured (${AUTH_MODE} mode)"
+
+  # Split from smbd/nmbd above: WS-Discovery is what gets this share
+  # to *appear* in Windows Network Browser on current Windows, but the
+  # share itself works fine without it (UNC path, or legacy NetBIOS
+  # browsing via nmbd). A wsdd-server hiccup — a chroot/capability
+  # restriction in some container or VM environment, say — should not
+  # take down the share over a nice-to-have.
+  if run sudo systemctl enable --now wsdd-server && run sudo systemctl restart wsdd-server; then
+    log_applied "wsdd-server running (WS-Discovery, for Network Browser visibility)"
+  else
+    log_warn "wsdd-server did not start — the share still works, but it may not"
+    log_warn "appear automatically in Windows Network Browser. Connect directly:"
+    log_warn "  \\\\$(env_get SERVER_IP 2>/dev/null || printf '<server-ip>')\\MediaShare"
+    log_warn "Troubleshoot with: systemctl status wsdd-server"
+  fi
 
   # Fallback path: if configure_sso just created a fresh account, the
   # password is already set and this is a no-op. If Tinyauth's account
@@ -985,11 +1012,18 @@ configure_smb_firewall() {
     run sudo ufw allow samba
     log_applied "ufw: allowed samba (137,138/udp, 139,445/tcp)"
   fi
-  if sudo ufw status | grep -q '3702/udp'; then
-    log_skip "ufw: 3702/udp already allowed"
+
+  # The wsdd package ships its own ufw application profile
+  # (/etc/ufw/applications.d/wsdd) — prefer it over a hardcoded port,
+  # since it tracks whatever wsdd actually listens on upstream rather
+  # than a port number frozen at the time this was written.
+  local wsdd_rule="wsdd"
+  sudo ufw app info wsdd >/dev/null 2>&1 || wsdd_rule="3702/udp"
+  if sudo ufw status | grep -qi "$wsdd_rule"; then
+    log_skip "ufw: ${wsdd_rule} already allowed"
   else
-    run sudo ufw allow 3702/udp
-    log_applied "ufw: allowed 3702/udp (WS-Discovery)"
+    run sudo ufw allow "$wsdd_rule"
+    log_applied "ufw: allowed ${wsdd_rule} (WS-Discovery)"
   fi
 }
 
