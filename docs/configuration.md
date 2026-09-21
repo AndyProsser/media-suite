@@ -179,23 +179,24 @@ Only used when `COMPOSE_PROFILES` includes `jellyfin`.
 
 ## Seerr
 
-Deployed at `https://<server>/discover`, but not configured by
-`configure.sh` — unlike Radarr/Sonarr/Prowlarr, Seerr has no bootstrap API
-key to read; it only gets one once an owner account exists, and that account
-can only be created through Seerr's own setup wizard. Complete it once after
-install:
+Deployed on its own entrypoint at `https://<server>:8446/` — `/discover` on
+the main `:443` port is a redirect to that address, not a proxied path, since
+Seerr has no base-URL/subpath support at all (see
+[architecture.md](architecture.md#seerr-redirect-not-a-path-prefix)).
 
-1. Open `https://<server>/discover` and create the owner account (Plex,
-   Jellyfin, or a local login — whichever matches your media server).
+Not configured by `configure.sh` — unlike Radarr/Sonarr/Prowlarr, Seerr has no
+bootstrap API key to read; it only gets one once an owner account exists, and
+that account can only be created through Seerr's own setup wizard. Complete it
+once after install:
+
+1. Open `https://<server>/discover` (or `https://<server>:8446/` directly)
+   and create the owner account (Plex, Jellyfin, or a local login —
+   whichever matches your media server).
 2. In **Settings → Services**, add Radarr and Sonarr using their internal
    addresses (`http://radarr:7878`, `http://sonarr:8989`) and the API key
    from each app's own **Settings → General**.
 3. In **Settings → General**, enable **Proxy Support** — Seerr sits behind
    Traefik now, and without this its CSRF/host checks can reject requests.
-
-See [architecture.md](architecture.md#seerr-a-deliberate-exception) for why
-`/discover` uses an unsupported routing workaround, and what to check first
-if it ever breaks after an update.
 
 ## TLS certificate
 

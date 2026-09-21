@@ -80,10 +80,11 @@ get their own TLS entrypoint:
 
 - `:443` → Homarr at `/`, everything else on a prefix
 - `:8443` → Plex or Jellyfin
+- `:8446` → Seerr, plus a plain redirect from `:443/discover` for convenience
+  (never a path prefix — see "Things that look like bugs but are not" below)
 
 Adding a service that needs `/` means adding an entrypoint, not fighting
-priorities. Seerr (`/discover`) is the one deliberate exception — see
-"Things that look like bugs but are not" below before touching its routing.
+priorities.
 
 Note the escaping difference: `$$` in Compose **labels**, single `$` in Traefik
 **file-provider** YAML. Mixing these up silently breaks redirects — it was a
@@ -165,19 +166,22 @@ left it permanently unhealthy and invisible to the proxy.
   self-signed certs or plain HTTP inside the Docker network.
 - qBittorrent's middleware order is `redirect,strip` and must stay that way —
   strip-first means the trailing-slash redirect can never match.
-- Homarr and the media app both use `PathPrefix(`/`)` at `priority=1`.
+- Homarr, the media app, and Seerr all use `PathPrefix(`/`)` at `priority=1`.
   Distinct entrypoints keep them apart; the low priority keeps them from
   shadowing the path-prefixed apps.
 - Byparr carries no `traefik.enable` label and publishes no port — same
   treatment as `docker-proxy`. Only Prowlarr, over the internal network, ever
   talks to it. This is deliberate, not a missing route.
-- Seerr runs at `/discover` on `:443` via strip-prefix, even though Seerr has
-  no officially supported subpath mode (only subdomains) and this repo's own
-  rule says an app that needs `/` gets its own entrypoint. That rule was
-  knowingly broken here to keep everything on one port; see
-  `docs/architecture.md#seerr-a-deliberate-exception`. If `/discover` breaks
-  after a `SEERR_TAG` bump, that is the known failure mode, not a routing
-  regression to "fix" by copying the qBittorrent pattern harder.
+- Seerr runs on its own entrypoint (`:8446`), never a path prefix. This was
+  tried and measured, not just read from docs: an uninitialized Seerr answers
+  `GET /` with `307 Location: /setup`, a root-relative redirect that
+  `stripPrefix` cannot fix (it only rewrites request paths, never response
+  `Location` headers) — so a `/discover` path-prefix approach sends the
+  browser outside the router entirely and breaks on the first request, not
+  just on some future upgrade. `:443/discover` is only a `redirectregex` to
+  `:8446` (`service: noop@internal`, no backend involved) — do not turn it
+  into a reverse proxy again. See
+  `docs/architecture.md#seerr-redirect-not-a-path-prefix`.
 - Seerr has no `configure.sh` wiring, unlike every other \*arr-adjacent
   service. It cannot: it has no bootstrap API key until an owner account
   exists, and that account only comes from its own interactive setup wizard.

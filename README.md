@@ -48,20 +48,20 @@ Want to see what it would do first?
 
 ## What you get
 
-| Service            | Address                     | Purpose                               |
-| ------------------ | --------------------------- | ------------------------------------- |
-| Homarr             | `https://<server>/`         | Dashboard                             |
-| Radarr             | `https://<server>/movies`   | Films                                 |
-| Sonarr             | `https://<server>/tv`       | Television                            |
-| Lidarr             | `https://<server>/music`    | Music                                 |
-| Prowlarr           | `https://<server>/idx`      | Indexer management                    |
-| qBittorrent        | `https://<server>/download` | Downloads                             |
-| Seerr              | `https://<server>/discover` | Media discovery & requests            |
-| Traefik            | `https://<server>/admin`    | Proxy dashboard                       |
-| Plex _or_ Jellyfin | `https://<server>:8443/`    | Media server                          |
-| Portainer          | `https://<server>/docker`   | Container GUI (opt-in)                |
-| Tinyauth           | `https://<server>:8445/`    | Sign-in (opt-in, `--auth=sso`)        |
-| SMB share          | `\\<server>\MediaShare`     | Windows file access (opt-in, `--smb`) |
+| Service            | Address                                   | Purpose                               |
+| ------------------ | ----------------------------------------- | ------------------------------------- |
+| Homarr             | `https://<server>/`                       | Dashboard                             |
+| Radarr             | `https://<server>/movies`                 | Films                                 |
+| Sonarr             | `https://<server>/tv`                     | Television                            |
+| Lidarr             | `https://<server>/music`                  | Music                                 |
+| Prowlarr           | `https://<server>/idx`                    | Indexer management                    |
+| qBittorrent        | `https://<server>/download`               | Downloads                             |
+| Traefik            | `https://<server>/admin`                  | Proxy dashboard                       |
+| Plex _or_ Jellyfin | `https://<server>:8443/`                  | Media server                          |
+| Seerr              | `https://<server>:8446/` (or `/discover`) | Media discovery & requests            |
+| Portainer          | `https://<server>/docker`                 | Container GUI (opt-in)                |
+| Tinyauth           | `https://<server>:8445/`                  | Sign-in (opt-in, `--auth=sso`)        |
+| SMB share          | `\\<server>\MediaShare`                   | Windows file access (opt-in, `--smb`) |
 
 The certificate is self-signed, so your browser will warn you once.
 

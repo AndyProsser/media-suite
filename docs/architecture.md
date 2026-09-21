@@ -23,11 +23,11 @@ flowchart TB
             lidarr["Lidarr<br/><code>/music</code>"]
             prowlarr["Prowlarr<br/><code>/idx</code>"]
             qbit["qBittorrent<br/><code>/download</code>"]
-            seerr["Seerr<br/><code>/discover</code><br/><i>unsupported workaround</i>"]
         end
 
         subgraph roots["Own entrypoint"]
             media["Plex <i>or</i> Jellyfin<br/>:8443"]
+            seerr["Seerr<br/>:8446<br/><i>+ /discover redirect on :443</i>"]
         end
 
         byparr["Byparr<br/><i>internal only</i>"]
@@ -42,12 +42,12 @@ flowchart TB
         smb["Windows / SMB client"]
     end
 
-    browser -->|":443 / :8443"| traefik
+    browser -->|":443 / :8443 / :8446"| traefik
     app -->|"direct :32400 / :8096"| media
     smb -.->|"native SMB, not through Traefik"| bulk
 
-    traefik --> homarr & radarr & sonarr & lidarr & prowlarr & qbit & seerr
-    traefik --> media
+    traefik --> homarr & radarr & sonarr & lidarr & prowlarr & qbit
+    traefik --> media & seerr
 
     prowlarr -.->|"syncs indexers"| radarr & sonarr & lidarr
     prowlarr -.->|"Cloudflare challenges"| byparr
@@ -103,25 +103,30 @@ entrypoint:
 | ---------- | ---------------- | ------------------------------------- |
 | `:443`     | Homarr           | Dashboard is the natural landing page |
 | `:8443`    | Plex or Jellyfin | Neither works reliably under a prefix |
+| `:8446`    | Seerr            | No base-URL/subpath support at all    |
 
 Adding a service that needs `/` means adding an entrypoint, not fighting router
 priorities.
 
-### Seerr: a deliberate exception
+### Seerr: redirect, not a path prefix
 
-Seerr (media discovery/requests, `/discover`) doesn't fit the table above
-cleanly. It doesn't merely prefer `/` the way Plex/Jellyfin do — it has no
-officially supported subpath mode at all, only subdomains. The "right" answer
-by this repo's own rule would be another dedicated entrypoint.
+Seerr doesn't merely prefer `/` the way Plex/Jellyfin do — it has **no**
+base-URL or subpath support whatsoever, only subdomains. This was confirmed
+directly, not just from its docs: an uninitialized instance responds to
+`GET /` with `307 Location: /setup` — a root-relative redirect. Traefik's
+`stripPrefix` middleware only rewrites the incoming request path, never a
+response's `Location` header, so a `/discover` path-prefix approach sends the
+browser to `https://host/setup`, outside any `PathPrefix(`/discover`)` router,
+and breaks on the very first request. Every client-side route and asset fetch
+afterwards would hit the same problem — this isn't specific to `/setup`.
 
-It runs at `/discover` on `:443` anyway, using the same redirect →
-strip-prefix middleware qBittorrent uses for `/download`. Seerr's own docs
-call an equivalent Nginx config an unsupported workaround that can break
-(wrong CSS/JS asset paths) when Seerr's build output changes shape. That
-tradeoff was made knowingly, in exchange for keeping everything on one port
-and one hostname. If `/discover` ever breaks after an upgrade, this is why —
-check Seerr's release notes, and consider pinning `SEERR_TAG` back to the last
-working version rather than trying to "fix" the routing.
+So Seerr gets its own entrypoint like Plex/Jellyfin, `:8446`, with nothing
+stripped or rewritten. For convenience, `:443/discover` is a plain `302`
+(via `redirectregex`, `service: noop@internal` — no backend is ever reached)
+to `https://<host>:8446/`, preserving anything after `/discover` (e.g.
+`/discover/movie/123` → `:8446/movie/123`). That's a full browser
+navigation to a new origin, not a reverse proxy, so none of the Location-header
+problem applies to it.
 
 ### The escaping trap
 

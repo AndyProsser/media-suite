@@ -28,14 +28,17 @@ All notable changes to this project are documented here. Format follows
   the stack's own `--auth` mode — guest read-write under `none`, the same
   login as Tinyauth's `admin` account under `sso`, captured from the same
   plaintext before it is hashed. See `docs/file-sharing.md`.
-- **Seerr**, for media discovery and requests, at `https://<server>/discover`.
-  Behind `auth@file` like the \*arr apps. Routed via an unsupported
-  strip-prefix workaround — Seerr has no officially supported subpath mode,
-  only subdomains — chosen deliberately to keep it on `:443` rather than
-  adding another entrypoint; see `docs/architecture.md`. Not wired up by
-  `configure.sh`: Seerr needs an owner account created through its own setup
-  wizard before it has an API key at all, so connecting Radarr/Sonarr is a
-  one-time manual step documented in `docs/configuration.md`.
+- **Seerr**, for media discovery and requests, on its own entrypoint at
+  `https://<server>:8446/` — same treatment as Plex/Jellyfin, because Seerr
+  has no base-URL/subpath support at all (confirmed directly: an
+  uninitialized instance answers `GET /` with a root-relative
+  `307 Location: /setup`, which breaks immediately under a path-prefix
+  proxy). `https://<server>/discover` is a plain redirect to `:8446`, not a
+  proxied path, for convenience. Behind `auth@file` like the \*arr apps. See
+  `docs/architecture.md`. Not wired up by `configure.sh`: Seerr needs an
+  owner account created through its own setup wizard before it has an API
+  key at all, so connecting Radarr/Sonarr is a one-time manual step
+  documented in `docs/configuration.md`.
 - **Settings added by a repo update now reach an existing `.env`.** A `git pull`
   cannot modify `.env`, so a new variable stayed undefined and Compose warned
   about it on every run. `install.sh` backfills any setting `.env.example`

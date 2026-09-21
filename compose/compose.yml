@@ -7,9 +7,10 @@
 #  Routing convention (see docs/architecture.md):
 #    Apps that tolerate a subpath get a path prefix on :443.
 #    Apps that must own "/" get their own TLS entrypoint.
-#      :443  → Homarr        :8443 → Plex/Jellyfin
-#    Exception: Seerr wants "/" too but has no supported subpath mode
-#    at all (not even a tolerant one) — see the seerr service below.
+#      :443 → Homarr   :8443 → Plex/Jellyfin   :8446 → Seerr
+#    Seerr also gets a plain 302 redirect from :443/discover to :8446,
+#    for convenience — see the seerr service below for why it can only
+#    ever be a redirect, never a path prefix.
 # ===================================================================
 
 x-common-env: &common-env
@@ -82,6 +83,8 @@ services:
       - "--entrypoints.websecure.http.tls=true"
       - "--entrypoints.websecure-media.address=:8443"
       - "--entrypoints.websecure-media.http.tls=true"
+      - "--entrypoints.websecure-discover.address=:8446"
+      - "--entrypoints.websecure-discover.http.tls=true"
       - "--entrypoints.websecure-auth.address=:8445"
       - "--entrypoints.websecure-auth.http.tls=true"
     labels:
@@ -102,6 +105,8 @@ services:
         published: 443
       - target: 8443
         published: 8443
+      - target: 8446
+        published: 8446
       - target: 8445
         published: 8445
     environment: *common-env
@@ -413,18 +418,18 @@ services:
       start_period: 60s
 
   # ─────────────────────────────────────────────────────────────────
-  #  Seerr — media discovery and request management
+  #  Seerr — media discovery and request management. Holds "/" on :8446
   #
-  #  Runs at /discover on :443, against this repo's own routing rule
-  #  ("apps that need `/` get their own entrypoint"): Seerr has no
-  #  officially supported base-URL/subpath mode, only subdomains. This
-  #  is the unsupported Nginx-style subfolder workaround, ported to
-  #  Traefik, chosen deliberately over a dedicated entrypoint. It can
-  #  break on a Seerr upgrade that changes its asset paths — symptom is
-  #  a blank page or broken CSS/JS at /discover, not a 404. If that
-  #  happens, check Seerr's release notes before touching this block;
-  #  the fix is usually waiting for the strip-prefix approach to work
-  #  again, or pinning SEERR_TAG back to the last known-good version.
+  #  Not path-prefixed like the arr apps. Seerr has no base-URL/subpath
+  #  support at all — confirmed directly: an uninitialized instance
+  #  responds to `GET /` with `307 Location: /setup`, a root-relative
+  #  redirect. Traefik's stripPrefix middleware only rewrites incoming
+  #  request paths, not outgoing Location headers, so a /discover
+  #  subpath approach sends the browser to https://host/setup — outside
+  #  any PathPrefix(`/discover`) router — and breaks immediately, not
+  #  just on some future upgrade. Every client-side route and asset
+  #  fetch after setup would hit the same problem. Hence its own
+  #  entrypoint, the same treatment as Plex/Jellyfin and Tinyauth.
   #
   #  No configure.sh wiring. Radarr/Sonarr registration needs an owner
   #  account first, created through Seerr's own setup wizard (Plex,
@@ -444,16 +449,25 @@ services:
     labels:
       - traefik.enable=true
       - traefik.docker.network=traefik
-      - traefik.http.routers.seerr.rule=PathPrefix(`/discover`)
-      - traefik.http.routers.seerr.entrypoints=websecure
+      - traefik.http.routers.seerr.rule=PathPrefix(`/`)
+      - traefik.http.routers.seerr.priority=1
+      - traefik.http.routers.seerr.entrypoints=websecure-discover
       - traefik.http.routers.seerr.tls=true
-      # Order matters: redirect must run BEFORE strip, or the trailing
-      # -slash redirect can never match its own prefix.
-      - traefik.http.routers.seerr.middlewares=auth@file,seerr-redirect,seerr-strip
-      - traefik.http.middlewares.seerr-redirect.redirectregex.regex=^(.*)/discover$$
-      - traefik.http.middlewares.seerr-redirect.redirectregex.replacement=$$1/discover/
-      - traefik.http.middlewares.seerr-strip.stripprefix.prefixes=/discover/
+      - traefik.http.routers.seerr.middlewares=auth@file
       - traefik.http.services.seerr.loadbalancer.server.port=5055
+      # Convenience redirect only, not a proxy: :443/discover sends the
+      # browser to :8446 via a real 302, so it lands on a new origin
+      # and Seerr never sees a stripped/prefixed path. Preserves
+      # anything after /discover (e.g. /discover/movie/123 -> :8446/movie/123).
+      # noop@internal because this router never reaches a backend — the
+      # redirect middleware answers before that would happen.
+      - traefik.http.routers.seerr-portal.rule=PathPrefix(`/discover`)
+      - traefik.http.routers.seerr-portal.entrypoints=websecure
+      - traefik.http.routers.seerr-portal.tls=true
+      - traefik.http.routers.seerr-portal.service=noop@internal
+      - traefik.http.routers.seerr-portal.middlewares=auth@file,seerr-portal-redirect
+      - traefik.http.middlewares.seerr-portal-redirect.redirectregex.regex=^(https?://[^:/]+)(:[0-9]+)?/discover/?(.*)$$
+      - traefik.http.middlewares.seerr-portal-redirect.redirectregex.replacement=$$1:8446/$$3
     environment:
       TZ: ${TZ}
     volumes:
