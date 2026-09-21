@@ -114,21 +114,23 @@ like `AUTH_MODE` and `COMPOSE_PROFILES` today.
 ## Config management
 
 `/etc/samba/smb.conf` is a host file that may pre-date this install (unlikely
-but possible) or gain hand-edits later. Rather than overwrite it wholesale,
-`install.sh` manages a marked block:
+but possible) or gain hand-edits later. Rather than scanning it for a marked
+block to replace, everything this phase manages lives in its own file,
+`/etc/samba/media-suite.conf`, rewritten wholesale on every run — the same
+"fully own it, regenerate every time" approach `auth.yml` already uses for
+Traefik. It holds `username map = /etc/samba/smbusers` and the `[MediaShare]`
+definition.
 
-```
-# ── BEGIN media-suite ──────────────────────────────────────────────
-...generated share + username map + guest config...
-# ── END media-suite ────────────────────────────────────────────────
-```
+The stock `smb.conf` gets exactly one idempotent change: an
+`include = /etc/samba/media-suite.conf` line spliced into its existing
+`[global]` section (checked for first, so a re-run never duplicates it).
+Samba treats an `include` inside `[global]` as continuing that same section,
+which is why `username map` — a global-only parameter — can live in the
+included file without needing its own `[global]` header. Everything else an
+operator has in `smb.conf` is left untouched.
 
-A re-run finds the markers and replaces only what's between them (same
-find-or-create idempotence every other phase already uses); a fresh host gets
-the block appended to the stock `smb.conf` Ubuntu ships.
-
-`username map` is a separate file at `/etc/samba/smbusers`, written and
-referenced the same way.
+`/etc/samba/smbusers` (the `admin = <unix_user>` mapping) is likewise fully
+owned and rewritten wholesale.
 
 ## Firewall
 
@@ -148,14 +150,23 @@ during the existing Tinyauth credential phase (before it's bcrypt-hashed and
 non-interactive). Nothing new is echoed, logged, or written to a file that
 doesn't already exist for this purpose.
 
+**Edge case:** if Tinyauth's account already existed before `--smb` was
+added, its plaintext is already gone by the time this phase runs — the
+credential-capture call above is only reached when a *fresh* Tinyauth
+account is being created. The SMB phase makes its own idempotent call to the
+same "set if not already set" helper as a fallback; finding no Samba password
+yet set, it generates an independent one and writes it out once, the same
+pattern as Tinyauth's own generated-password flow.
+
 ## Removal
 
-`remove.sh` gets a confirm-gated step, only run if `SMB_SHARE=true` is set:
-removes the marked block from `smb.conf` and `smbusers`, removes the Samba
-password entry (`smbpasswd -x`), and — behind a separate, explicit
-confirmation, since it's a system package removal rather than config — offers
-to `apt-get remove` `samba`/`wsdd`. Declining either leaves the packages
-installed but unconfigured, which is safe.
+`remove.sh` gets a confirm-gated step (`--purge-smb`), only run if
+`SMB_SHARE=true` is set: removes `/etc/samba/media-suite.conf`, its `include`
+line in `smb.conf`, `/etc/samba/smbusers`, and the Samba password entry
+(`smbpasswd -x`), and — behind a separate, explicit confirmation, since it's a
+system package removal rather than config — offers to `apt-get remove`
+`samba`/`wsdd`. Declining either leaves the packages installed but
+unconfigured, which is safe.
 
 ## Docs
 
