@@ -116,7 +116,15 @@ Every image is pinned. There is no `:latest` anywhere, and no Watchtower.
 | `HOMARR_TAG`                                                                | `v1.77.2` |
 | `PLEX_TAG`, `JELLYFIN_TAG`                                                  | `release` |
 | `PORTAINER_TAG`                                                             | `lts`     |
-| `BYPARR_TAG`                                                                | `v3.0.4`  |
+| `BYPARR_TAG`                                                                | `latest`  |
+
+`BYPARR_TAG` is the one deliberate exception to "no `:latest`": Byparr's
+upstream CI never pushes a container tag matching its GitHub releases
+(`v3.0.4` and friends 404 on GHCR — only `latest`, `main` and `nightly`
+exist, all floating). A version-pinned tag simply isn't available, so an
+unrelated `update.sh` run (bumping Radarr, say) can also silently change
+Byparr's image. If that risk matters to you, pin it to a digest instead —
+see the comment above `BYPARR_TAG` in `.env.example`.
 
 `update.sh --check` also compares your pinned tags against the ones recommended
 in `.env.example` and reports any that have moved — a `git pull` cannot change
