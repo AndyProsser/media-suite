@@ -995,7 +995,17 @@ configure_smb_share() {
   # Fallback path: if configure_sso just created a fresh account, the
   # password is already set and this is a no-op. If Tinyauth's account
   # pre-dated --smb, this generates SMB's own password instead.
-  [[ "$AUTH_MODE" == "sso" ]] && ensure_smb_password "$unix_user"
+  #
+  # Written as a full if/fi rather than `[[ cond ]] && cmd`: as the
+  # LAST statement in the function, a bare `&&` form makes the
+  # function's own return status hinge on whichever branch was taken —
+  # under --auth=none this test is false, so the function would return
+  # 1 with nothing having gone wrong, and main() calling this as a
+  # bare statement would trip set -e over it. Cost Andy a debugging
+  # session; do not reintroduce this shape at the end of a function.
+  if [[ "$AUTH_MODE" == "sso" ]]; then
+    ensure_smb_password "$unix_user"
+  fi
 }
 
 configure_smb_firewall() {
