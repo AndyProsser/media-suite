@@ -1296,6 +1296,11 @@ print_summary() {
   fi
   (( WITH_PORTAINER ))  && printf '  %-14s %s\n' "Portainer"   "https://${ip}/docker"
   (( WITH_SMB ))        && printf '  %-14s %s\n' "SMB share"   "\\\\${ip}\\MediaShare"
+  case "$GPU_TYPE" in
+    vaapi)  printf '  %-14s %s\n' "GPU accel" "VAAPI (/dev/dri)" ;;
+    nvidia) printf '  %-14s %s\n' "GPU accel" "NVENC (Nvidia)" ;;
+    *)      printf '  %-14s %s\n' "GPU accel" "none detected" ;;
+  esac
 
   printf '\n  %sAuthentication%s\n' "$C_BOLD" "$C_RESET"
   if [[ "$AUTH_MODE" == "sso" ]]; then
@@ -1337,6 +1342,7 @@ main() {
   choose_media_app
   choose_auth_mode
   configure_env
+  detect_gpu
   collect_plex_claim
   create_directories
   generate_secrets
