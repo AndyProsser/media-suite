@@ -1,0 +1,34 @@
+# ===================================================================
+#  VAAPI GPU passthrough — Intel iGPU (i915) or AMD GPU (amdgpu)
+# ===================================================================
+#  Opt-in overlay, mirroring compose.portainer.yml: install.sh writes
+#  .gpu-vaapi-enabled when it detects (or is told via --gpu=vaapi) a
+#  render node at /dev/dri/renderD128, and common.sh's compose()
+#  appends this file whenever that marker exists.
+#
+#  Both Intel and AMD expose the same VAAPI device node pattern, so
+#  there is exactly one overlay for both vendors — no vendor detection
+#  needed, only "does a render node exist".
+#
+#  group_add is not optional: /dev/dri/renderD128 is owned root:render
+#  on the host, and the hotio images' app user (PUID:PGID) has no
+#  reason to already be in that group. Without it, the device is
+#  visible inside the container but every open() on it fails EACCES,
+#  and hardware transcode falls back to software with no visible
+#  error anywhere except Jellyfin's own log. GPU_RENDER_GID is written
+#  to .env by install.sh from `stat -c '%g' /dev/dri/renderD128`, so
+#  this is always correct regardless of what the group is numbered on
+#  a given box.
+# ===================================================================
+
+services:
+  jellyfin:
+    devices:
+      - /dev/dri:/dev/dri
+    group_add:
+      - "${GPU_RENDER_GID}"
+  plex:
+    devices:
+      - /dev/dri:/dev/dri
+    group_add:
+      - "${GPU_RENDER_GID}"

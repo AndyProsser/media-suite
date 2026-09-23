@@ -178,6 +178,11 @@ compose() {
   if [[ "${WITH_PORTAINER}" == "1" || -f "${REPO_ROOT}/.portainer-enabled" ]]; then
     files+=(-f "${REPO_ROOT}/compose/compose.portainer.yml")
   fi
+  if [[ -f "${REPO_ROOT}/.gpu-vaapi-enabled" ]]; then
+    files+=(-f "${REPO_ROOT}/compose/compose.gpu-vaapi.yml")
+  elif [[ -f "${REPO_ROOT}/.gpu-nvidia-enabled" ]]; then
+    files+=(-f "${REPO_ROOT}/compose/compose.gpu-nvidia.yml")
+  fi
   docker compose \
     --project-directory "$REPO_ROOT" \
     --env-file "$ENV_FILE" \

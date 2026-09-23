@@ -1,0 +1,31 @@
+# ===================================================================
+#  NVENC GPU passthrough — Nvidia, via nvidia-container-toolkit
+# ===================================================================
+#  Opt-in overlay, mirroring compose.portainer.yml: install.sh writes
+#  .gpu-nvidia-enabled when it detects (or is told via --gpu=nvidia) a
+#  working nvidia-smi, installs nvidia-container-toolkit if it isn't
+#  already present, and common.sh's compose() appends this file
+#  whenever that marker exists.
+#
+#  Nvidia doesn't expose /dev/dri — the driver stack needs a GPU
+#  reservation instead of a device bind mount, which is why this is a
+#  separate overlay rather than a branch inside compose.gpu-vaapi.yml.
+# ===================================================================
+
+services:
+  jellyfin:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+  plex:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
