@@ -309,6 +309,48 @@ choose_media_app() {
   log_success "Media server: ${MEDIA_APP}"
 }
 
+# ── 4b. GPU acceleration ─────────────────────────────────────────────
+#  Not a persisted user choice like MEDIA_APP/AUTH_MODE — this tracks a
+#  hardware fact, so it re-evaluates on every run rather than skipping
+#  when "already configured". Re-plugging (or removing) a GPU is picked
+#  up on the next install.sh run with no flag needed.
+detect_gpu() {
+  log_step "GPU acceleration"
+
+  if [[ -n "$GPU_TYPE" ]]; then
+    log_info "GPU backend forced: ${GPU_TYPE}"
+  elif [[ -e /dev/dri/renderD128 ]]; then
+    GPU_TYPE="vaapi"
+  elif have_cmd nvidia-smi && nvidia-smi >/dev/null 2>&1; then
+    GPU_TYPE="nvidia"
+  else
+    GPU_TYPE="none"
+  fi
+
+  case "$GPU_TYPE" in
+    vaapi)  configure_vaapi ;;
+    nvidia) configure_nvidia ;;
+    none)
+      run rm -f "${REPO_ROOT}/.gpu-vaapi-enabled" "${REPO_ROOT}/.gpu-nvidia-enabled"
+      log_skip "No GPU detected"
+      ;;
+  esac
+}
+
+# VAAPI covers both Intel (i915) and AMD (amdgpu) — both expose the same
+# /dev/dri/renderD128 device node, so there is no vendor branch here.
+configure_vaapi() {
+  if [[ ! -e /dev/dri/renderD128 ]]; then
+    die "--gpu=vaapi was forced but /dev/dri/renderD128 does not exist on this host."
+  fi
+  local gid
+  gid="$(stat -c '%g' /dev/dri/renderD128)"
+  env_set GPU_RENDER_GID "$gid"
+  run touch "${REPO_ROOT}/.gpu-vaapi-enabled"
+  run rm -f "${REPO_ROOT}/.gpu-nvidia-enabled"
+  log_applied "GPU acceleration: VAAPI (/dev/dri, render group ${gid})"
+}
+
 # Adds any setting .env.example defines that .env does not, using the
 # example's value. Auto-detected fields are blank there, so detection
 # below fills them in as it would on a fresh install. This is what
