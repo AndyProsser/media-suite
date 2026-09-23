@@ -188,3 +188,10 @@ left it permanently unhealthy and invisible to the proxy.
   Same treatment as Plex/Jellyfin's first-run setup — don't try to script
   around it without re-checking whether Seerr's setup API is actually stable
   enough to drive unattended.
+- The VAAPI GPU overlay (`compose/compose.gpu-vaapi.yml`) sets `group_add`
+  from a `GPU_RENDER_GID` env value read with
+  `stat -c '%g' /dev/dri/renderD128`, not a hardcoded GID like `108` or
+  `44`. The render group's number varies by distro and by what else is
+  installed — hardcoding it works on the box it was tested on and silently
+  breaks hardware transcode (falls back to software, no error) on any
+  other box.

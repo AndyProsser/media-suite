@@ -177,6 +177,40 @@ Only used when `COMPOSE_PROFILES` includes `jellyfin`.
 | ------------------------------- | ------------------------------------------------------------------------- |
 | `JELLYFIN_PUBLISHED_SERVER_URL` | Advertised to LAN clients for discovery. Set from `SERVER_IP` at install. |
 
+## GPU acceleration
+
+| Variable         | Detection                           | Purpose                                                                          |
+| ---------------- | ------------------------------------ | --------------------------------------------------------------------------------- |
+| `GPU_RENDER_GID` | `stat -c '%g' /dev/dri/renderD128`  | VAAPI only — the host's render-group GID, so the container can open the device.  |
+
+`install.sh` detects a GPU on every run (it tracks hardware, not a stored
+choice, so re-plugging or removing a GPU is picked up the next time you run
+it) and wires the right passthrough into both `jellyfin` and `plex`:
+
+1. `/dev/dri/renderD128` exists → **VAAPI**. Covers both Intel (`i915`) and
+   AMD (`amdgpu`) — they expose the same device node pattern, so there is
+   one code path for both vendors, not two.
+2. Otherwise, `nvidia-smi` works → **NVENC**. If `nvidia-container-toolkit`
+   isn't already installed, `install.sh` installs it from NVIDIA's official
+   apt repo and configures the Docker runtime — this only happens once
+   `nvidia-smi` has already proven a working host driver is present;
+   `install.sh` never installs or touches the GPU driver itself.
+3. Neither → no hardware transcode; both apps fall back to software.
+
+Override auto-detection with `--gpu=vaapi|nvidia|none`.
+
+Out of scope, because none of them apply to a Linux Docker homelab host:
+AMD AMF (Windows-only), Rockchip MPP (ARM SBC hardware), Apple VideoToolbox
+and V4L2. These four still appear in Jellyfin's own hardware-acceleration
+dropdown because that list is identical across every platform Jellyfin runs
+on — it is not a live readout of what this host supports.
+
+Once passthrough is wired, still pick the specific backend inside each
+app's own transcoding settings (Jellyfin: **Dashboard → Playback**; Plex:
+**Settings → Transcoder**, requires an active Plex Pass) — `install.sh`
+only makes the hardware reachable, it does not change either app's
+transcoding preference.
+
 ## Seerr
 
 Deployed on its own entrypoint at `https://<server>:8446/` — `/discover` on
