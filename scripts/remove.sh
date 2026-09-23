@@ -190,6 +190,12 @@ remove_network() {
   fi
 }
 
+remove_gpu_markers() {
+  [[ -f "${REPO_ROOT}/.gpu-vaapi-enabled" || -f "${REPO_ROOT}/.gpu-nvidia-enabled" ]] || return 0
+  run rm -f "${REPO_ROOT}/.gpu-vaapi-enabled" "${REPO_ROOT}/.gpu-nvidia-enabled"
+  log_applied "Removed GPU detection markers (re-detected on next install.sh run)"
+}
+
 main() {
   parse_args "$@"
   require_env_file
@@ -208,6 +214,7 @@ main() {
   purge_media
   purge_smb
   remove_network
+  remove_gpu_markers
 
   printf '\n  %sDone.%s\n' "$C_GREEN" "$C_RESET"
   (( PURGE )) || printf '  Your data is still at %s\n' "$(env_get DOCKERCONFDIR)"
