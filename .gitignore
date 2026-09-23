@@ -21,8 +21,10 @@ logs/
 .remember/
 __pycache__/
 *.pyc
-# install.sh writes this marker when --with-portainer is used.
+# install.sh writes these markers when a GPU backend is detected/forced.
 .portainer-enabled
+.gpu-vaapi-enabled
+.gpu-nvidia-enabled
 
 # ── OS cruft ───────────────────────────────────────────────────────
 .DS_Store
