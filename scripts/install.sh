@@ -28,6 +28,7 @@ trap cleanup EXIT
 
 MEDIA_APP=""
 AUTH_MODE=""
+GPU_TYPE=""
 SSO_PASSWORD_FILE=""
 DOCKERCONFDIR_CACHED=""
 # Detected host values, kept in memory so --dry-run can report
@@ -61,6 +62,11 @@ Options:
                                     surface, including the Traefik dashboard.
                              none : no login on the LAN for the arr apps and
                                     qBittorrent. Prompted if omitted.
+  --gpu=vaapi|nvidia|none    Hardware transcode backend for Jellyfin/Plex.
+                             Auto-detected if omitted: vaapi if /dev/dri
+                             exists, else nvidia if nvidia-smi works, else
+                             none. nvidia additionally installs
+                             nvidia-container-toolkit if it's missing.
   --config-dir=PATH          Application config/databases. Must be block
                              storage (iSCSI or local disk), never NFS.
   --data-dir=PATH            Media library and downloads. NFS is fine.
@@ -88,6 +94,7 @@ parse_args() {
     case "$1" in
       --media-app=*)        MEDIA_APP="${1#*=}" ;;
       --auth=*)             AUTH_MODE="${1#*=}" ;;
+      --gpu=*)              GPU_TYPE="${1#*=}" ;;
       --media-app)          MEDIA_APP="${2:-}"; shift ;;
       --config-dir=*)       CONFIG_DIR="${1#*=}" ;;
       --data-dir=*)         DATA_DIR="${1#*=}" ;;
@@ -110,6 +117,9 @@ parse_args() {
   fi
   if [[ -n "$AUTH_MODE" && "$AUTH_MODE" != "sso" && "$AUTH_MODE" != "none" ]]; then
     die "--auth must be 'sso' or 'none', got '${AUTH_MODE}'"
+  fi
+  if [[ -n "$GPU_TYPE" && "$GPU_TYPE" != "vaapi" && "$GPU_TYPE" != "nvidia" && "$GPU_TYPE" != "none" ]]; then
+    die "--gpu must be 'vaapi', 'nvidia' or 'none', got '${GPU_TYPE}'"
   fi
 }
 
