@@ -351,6 +351,40 @@ configure_vaapi() {
   log_applied "GPU acceleration: VAAPI (/dev/dri, render group ${gid})"
 }
 
+# Only auto-installs the userspace toolkit that bridges an ALREADY
+# INSTALLED host Nvidia driver into containers — this never touches
+# the GPU driver itself, the same boundary install_docker() draws
+# around not installing Docker's own kernel dependencies.
+configure_nvidia() {
+  have_cmd nvidia-smi || die "--gpu=nvidia was forced but nvidia-smi is not available on this host. Install the Nvidia driver first."
+  nvidia-smi >/dev/null 2>&1 || die "nvidia-smi is present but failed to run. Check the Nvidia driver installation."
+
+  if have_cmd nvidia-ctk; then
+    log_skip "nvidia-container-toolkit is already installed"
+  else
+    log_info "Installing nvidia-container-toolkit..."
+    run sudo install -m 0755 -d /etc/apt/keyrings
+    if [[ ! -f /etc/apt/keyrings/nvidia-container-toolkit.gpg ]]; then
+      run bash -c 'curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey \
+        | gpg --dearmor | sudo tee /etc/apt/keyrings/nvidia-container-toolkit.gpg >/dev/null'
+    fi
+    if [[ ! -f /etc/apt/sources.list.d/nvidia-container-toolkit.list ]]; then
+      run bash -c 'curl -fsSL https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list \
+        | sed "s#deb https://#deb [signed-by=/etc/apt/keyrings/nvidia-container-toolkit.gpg] https://#g" \
+        | sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list >/dev/null'
+    fi
+    run sudo apt-get update -qq
+    run sudo apt-get install -y -qq nvidia-container-toolkit
+    run sudo nvidia-ctk runtime configure --runtime=docker
+    run sudo systemctl restart docker
+    log_success "nvidia-container-toolkit installed and configured"
+  fi
+
+  run touch "${REPO_ROOT}/.gpu-nvidia-enabled"
+  run rm -f "${REPO_ROOT}/.gpu-vaapi-enabled"
+  log_applied "GPU acceleration: NVENC (Nvidia)"
+}
+
 # Adds any setting .env.example defines that .env does not, using the
 # example's value. Auto-detected fields are blank there, so detection
 # below fills them in as it would on a fresh install. This is what
