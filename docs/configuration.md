@@ -179,17 +179,23 @@ Only used when `COMPOSE_PROFILES` includes `jellyfin`.
 
 ## GPU acceleration
 
-| Variable         | Detection                           | Purpose                                                                          |
-| ---------------- | ------------------------------------ | --------------------------------------------------------------------------------- |
-| `GPU_RENDER_GID` | `stat -c '%g' /dev/dri/renderD128`  | VAAPI only — the host's render-group GID, so the container can open the device.  |
+| Variable         | Detection                                    | Purpose                                                                         |
+| ---------------- | ---------------------------------------------- | --------------------------------------------------------------------------------- |
+| `GPU_RENDER_GID` | `stat -c '%g'` on the detected render node    | VAAPI only — the host's render-group GID, so the container can open the device. |
 
 `install.sh` detects a GPU on every run (it tracks hardware, not a stored
 choice, so re-plugging or removing a GPU is picked up the next time you run
 it) and wires the right passthrough into both `jellyfin` and `plex`:
 
-1. `/dev/dri/renderD128` exists → **VAAPI**. Covers both Intel (`i915`) and
-   AMD (`amdgpu`) — they expose the same device node pattern, so there is
-   one code path for both vendors, not two.
+1. A `/dev/dri/renderD*` node backed by Intel (`i915`) or AMD (`amdgpu`)
+   exists → **VAAPI**. Both vendors expose the same device node pattern, so
+   there is one code path for both, not two. Detection checks the node's PCI
+   vendor via sysfs, not just that a node exists — Nvidia's proprietary
+   driver registers its own DRM render node too (at the same
+   `/dev/dri/renderD128`-style path), and Mesa's VAAPI backends cannot open
+   it. A box with an Nvidia card and no real Intel/AMD GPU would otherwise
+   be misreported as VAAPI-capable and fail at transcode time instead of
+   falling through to NVENC.
 2. Otherwise, `nvidia-smi` works → **NVENC**. If `nvidia-container-toolkit`
    isn't already installed, `install.sh` installs it from NVIDIA's official
    apt repo and configures the Docker runtime — this only happens once

@@ -319,7 +319,7 @@ detect_gpu() {
 
   if [[ -n "$GPU_TYPE" ]]; then
     log_info "GPU backend forced: ${GPU_TYPE}"
-  elif [[ -e /dev/dri/renderD128 ]]; then
+  elif vaapi_render_node >/dev/null; then
     GPU_TYPE="vaapi"
   elif have_cmd nvidia-smi && nvidia-smi >/dev/null 2>&1; then
     GPU_TYPE="nvidia"
@@ -337,18 +337,43 @@ detect_gpu() {
   esac
 }
 
+# Prints the first /dev/dri/renderD* node backed by Intel (i915, PCI
+# vendor 0x8086) or AMD (amdgpu, 0x1002), or fails if none exists.
+#
+# Existence of a render node alone is NOT proof of VAAPI: Nvidia's own
+# proprietary driver registers a DRM render node too (nvidia_drm), and
+# it shows up at the same /dev/dri/renderD128 path an Intel/AMD node
+# would use. Mesa's VAAPI backends (iHD, radeonsi) cannot open an
+# Nvidia-owned node — treating "a render node exists" as "VAAPI is
+# available" reports vaapi on an Nvidia-only box and Jellyfin fails at
+# transcode time instead of falling through to the nvidia branch,
+# which is the backend that actually works there. Checking the PCI
+# vendor via sysfs (pure filesystem read, no lspci) is what tells them
+# apart.
+vaapi_render_node() {
+  local node vendor
+  for node in /dev/dri/renderD*; do
+    [[ -e "$node" ]] || continue
+    vendor="$(cat "/sys/class/drm/$(basename "$node")/device/vendor" 2>/dev/null)"
+    case "$vendor" in
+      0x8086|0x1002) printf '%s' "$node"; return 0 ;;
+    esac
+  done
+  return 1
+}
+
 # VAAPI covers both Intel (i915) and AMD (amdgpu) — both expose the same
-# /dev/dri/renderD128 device node, so there is no vendor branch here.
+# device node pattern, so there is no vendor branch here beyond the
+# Nvidia exclusion in vaapi_render_node.
 configure_vaapi() {
-  if [[ ! -e /dev/dri/renderD128 ]]; then
-    die "--gpu=vaapi was forced but /dev/dri/renderD128 does not exist on this host."
-  fi
+  local node
+  node="$(vaapi_render_node)" || die "--gpu=vaapi was forced but no Intel/AMD render node was found under /dev/dri (an Nvidia-only render node doesn't count — see vaapi_render_node)."
   local gid
-  gid="$(stat -c '%g' /dev/dri/renderD128)"
+  gid="$(stat -c '%g' "$node")"
   env_set GPU_RENDER_GID "$gid"
   run touch "${REPO_ROOT}/.gpu-vaapi-enabled"
   run rm -f "${REPO_ROOT}/.gpu-nvidia-enabled"
-  log_applied "GPU acceleration: VAAPI (/dev/dri, render group ${gid})"
+  log_applied "GPU acceleration: VAAPI (${node}, render group ${gid})"
 }
 
 # Only auto-installs the userspace toolkit that bridges an ALREADY

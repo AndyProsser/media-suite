@@ -189,9 +189,18 @@ left it permanently unhealthy and invisible to the proxy.
   around it without re-checking whether Seerr's setup API is actually stable
   enough to drive unattended.
 - The VAAPI GPU overlay (`compose/compose.gpu-vaapi.yml`) sets `group_add`
-  from a `GPU_RENDER_GID` env value read with
-  `stat -c '%g' /dev/dri/renderD128`, not a hardcoded GID like `108` or
-  `44`. The render group's number varies by distro and by what else is
-  installed — hardcoding it works on the box it was tested on and silently
-  breaks hardware transcode (falls back to software, no error) on any
-  other box.
+  from a `GPU_RENDER_GID` env value read with `stat -c '%g'` on the detected
+  render node, not a hardcoded GID like `108` or `44`. The render group's
+  number varies by distro and by what else is installed — hardcoding it
+  works on the box it was tested on and silently breaks hardware transcode
+  (falls back to software, no error) on any other box.
+- `detect_gpu()`'s VAAPI check (`vaapi_render_node()` in `install.sh`) reads
+  each `/dev/dri/renderD*` node's PCI vendor from sysfs before trusting it —
+  it does not just check that a render node exists. Confirmed on the real
+  dev box this was built on: an Nvidia GTX 1080 with no Intel iGPU still
+  produces `/dev/dri/renderD128`, because Nvidia's proprietary driver
+  registers its own DRM render node (`nvidia_drm`) at the same path an
+  Intel/AMD node would use. Checking existence alone reported `vaapi` on
+  that box and never reached the `nvidia` branch — Mesa's VAAPI backends
+  can't open an Nvidia-owned node, so Jellyfin would fail at transcode time
+  instead of using the NVENC path that actually works.
